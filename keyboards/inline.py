@@ -18,3 +18,13 @@ def profile_kb() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🏠 Главная", callback_data="main_menu")]
         ]
     )
+
+def admin_main_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
+            [InlineKeyboardButton(text="➕ Добавить товар", callback_data="admin_add_item")],
+            [InlineKeyboardButton(text="🔑 Загрузить ключи", callback_data="admin_add_keys")]
+        ]
+    )
+    
