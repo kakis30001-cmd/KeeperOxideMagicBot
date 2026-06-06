@@ -8,3 +8,11 @@ def items_kb(items) -> InlineKeyboardMarkup:
     builder.adjust(1)
     builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu"))
     return builder.as_markup()
+
+def admin_items_kb(items) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    for item in items:
+        builder.button(text=item.name, callback_data=f"admitem_{item.id}")
+    builder.adjust(1)
+    return builder.as_markup()
+    
