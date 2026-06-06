@@ -1,68 +1,55 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
-from aiogram.filters import CommandStart
-from database.requests import add_user, get_user, get_all_items
-from keyboards.inline import main_menu_kb, profile_kb
-from keyboards.builder import items_kb
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from database.models import async_session, Key
+from sqlalchemy import select, update
 
 user_router = Router()
 
-@user_router.message(CommandStart())
+def get_main_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 Каталог", callback_data="catalog")]
+    ])
+
+@user_router.message(F.text == "/start")
 async def cmd_start(message: Message):
-    await add_user(message.from_user.id)
-    text = (
-        "<b>👋 Добро пожаловать в магазин!</b>\n\n"
-        "Для покупки товаров используйте кнопки ниже ⬇️"
-    )
-    await message.answer(text, reply_markup=main_menu_kb())
+    await message.answer("Привет! Выбери:", reply_markup=get_main_kb())
 
-@user_router.callback_query(F.data == "main_menu")
-async def back_to_main(callback: CallbackQuery):
-    text = (
-        "<b>👋 Добро пожаловать в магазин!</b>\n\n"
-        "Для покупки товаров используйте кнопки ниже ⬇️"
-    )
-    await callback.message.edit_text(text, reply_markup=main_menu_kb())
-    await callback.answer()
+@user_router.callback_query(F.data == "catalog")
+async def show_games(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Oxide", callback_data="game_oxide")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]
+    ])
+    await callback.message.edit_text("Выберите игру:", reply_markup=kb)
 
-@user_router.callback_query(F.data == "profile")
-async def show_profile(callback: CallbackQuery):
-    user = await get_user(callback.from_user.id)
-    text = (
-        "<b>👤 Профиль</b>\n\n"
-        f"<blockquote>"
-        f"<b>ID:</b> <code>{user.telegram_id}</code>\n"
-        f"<b>Ваш баланс:</b> <code>{user.balance} ₽</code>"
-        f"</blockquote>"
-    )
-    await callback.message.edit_text(text, reply_markup=profile_kb())
-    await callback.answer()
+@user_router.callback_query(F.data == "game_oxide")
+async def show_devices(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Android (non root)", callback_data="dev_android")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="catalog")]
+    ])
+    await callback.message.edit_text("Выберите устройство:", reply_markup=kb)
 
-@user_router.callback_query(F.data == "deposit")
-async def process_deposit(callback: CallbackQuery):
-    await callback.answer("Метод пополнения в разработке (API заказчика)", show_alert=True)
+@user_router.callback_query(F.data == "dev_android")
+async def show_products(callback: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Magic - 100р", callback_data="buy_magic")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="game_oxide")]
+    ])
+    await callback.message.edit_text("Выберите продукт:", reply_markup=kb)
 
-@user_router.callback_query(F.data == "shop")
-async def show_shop(callback: CallbackQuery):
-    items = await get_all_items()
-    if not items:
-        await callback.message.edit_text(
-            "<b>🛍 Магазин пуст</b>\n\n"
-            "Товары скоро появятся!",
-            reply_markup=main_menu_kb()
-        )
-        return
-
-    text = "<b>🛍 Доступные товары:</b>\n\nВыберите нужный товар из списка ниже:"
-    await callback.message.edit_text(text, reply_markup=items_kb(items))
-    await callback.answer()
-
-@user_router.callback_query(F.data == "support")
-async def show_support(callback: CallbackQuery):
-    text = (
-        "<b>📢 Служба поддержки</b>\n\n"
-        "Если у вас возникли проблемы, обратитесь к администратору."
-    )
-    await callback.message.edit_text(text, reply_markup=main_menu_kb())
-    await callback.answer()
-    
+@user_router.callback_query(F.data == "buy_magic")
+async def buy_key(callback: CallbackQuery):
+    async with async_session() as session:
+        # Ищем первый свободный ключ
+        stmt = select(Key).where(Key.product == "Magic", Key.is_sold == False).limit(1)
+        result = await session.execute(stmt)
+        key = result.scalar()
+        
+        if key:
+            key.is_sold = True
+            await session.commit()
+            await callback.message.edit_text(f"✅ Успешно! Ваш ключ: <code>{key.key_code}</code>")
+        else:
+            await callback.answer("Ключей нет в наличии!")
+            
