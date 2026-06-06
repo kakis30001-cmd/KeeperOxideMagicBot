@@ -74,7 +74,7 @@ async def profile(callback: CallbackQuery):
 async def support(callback: CallbackQuery):
     await callback.message.edit_text("🛠 <b>Поддержка:</b>\n\nПо всем вопросам: @admin", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]]))
 
-@user_rode_router.callback_query(F.data == "info")
+@user_router.callback_query(F.data == "info")
 async def info(callback: CallbackQuery):
     await callback.message.edit_text("ℹ️ <b>Информация:</b>\n\nЛучший магазин ключей Oxide.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]]))
     
