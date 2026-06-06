@@ -9,6 +9,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from config import BOT_TOKEN
 from database.models import async_main
 from handlers.user import user_router
+from handlers.admin import admin_router
 
 WEB_SERVER_HOST = "0.0.0.0"
 WEB_SERVER_PORT = int(os.getenv("PORT", 8080))
@@ -43,7 +44,7 @@ async def platega_webhook(request: web.Request):
                             )
                         )
                     except Exception as e:
-                        print(f"Error sending message: {e}")
+                        pass
                         
         return web.json_response({"status": "ok"}, status=200)
     except Exception as e:
@@ -55,6 +56,7 @@ async def on_startup(bot: Bot):
 
 def main():
     dp.include_router(user_router)
+    dp.include_router(admin_router)
     dp.startup.register(on_startup)
     
     app = web.Application()
