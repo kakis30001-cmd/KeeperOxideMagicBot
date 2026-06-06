@@ -61,7 +61,8 @@ async def show_shop(callback: CallbackQuery):
 async def show_support(callback: CallbackQuery):
     text = (
         "<b>📢 Служба поддержки</b>\n\n"
-        "Если у вас возникли проблемы, обратитесь к администратору: @admin_username"
+        "Если у вас возникли проблемы, обратитесь к администратору."
     )
     await callback.message.edit_text(text, reply_markup=main_menu_kb())
     await callback.answer()
+    
