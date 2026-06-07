@@ -275,7 +275,8 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         if not payment_url:
             await message.answer(
                 f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Платежная система временно недоступна</b>\n\n"
-                f"Свяжитесь с администратором для пополнения баланса.",
+                f"Свяжитесь с администратором для пополнения баланса.\n\n"
+                f"👤 Админ: @nikita1055",
                 parse_mode="HTML",
                 reply_markup=get_profile_keyboard()
             )
@@ -680,10 +681,4 @@ async def create_promocode_code(message: Message, state: FSMContext):
     )
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("promo_type_"))
-async def create_promocode_type(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔")
-        return
-    
-    discount_type = callback.data.split("_")[2]
-    await state
+async def create_promocode_type(callback: CallbackQuery, state: FSMContext
