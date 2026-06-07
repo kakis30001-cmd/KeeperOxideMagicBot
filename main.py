@@ -13,7 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
+from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
@@ -71,6 +71,9 @@ dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
 
 pending_payments = {}
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
 
 class AddProductStates(StatesGroup):
     waiting_name = State()
@@ -509,7 +512,7 @@ async def handle_buy(callback: CallbackQuery):
 
 @dp.message(Command("admin"))
 async def admin_cmd(message: Message):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         await message.answer("⛔ Доступ запрещен")
         return
     
@@ -521,7 +524,7 @@ async def admin_cmd(message: Message):
 
 @dp.callback_query(lambda c: c.data == "admin_add_product")
 async def admin_add_product(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Доступ запрещен")
         return
     await state.set_state(AddProductStates.waiting_name)
@@ -533,7 +536,7 @@ async def admin_add_product(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AddProductStates.waiting_name)
 async def product_name(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     await state.update_data(name=message.text)
     await state.set_state(AddProductStates.waiting_price)
@@ -541,7 +544,7 @@ async def product_name(message: Message, state: FSMContext):
 
 @dp.message(AddProductStates.waiting_price)
 async def product_price(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         price = int(message.text)
@@ -553,7 +556,7 @@ async def product_price(message: Message, state: FSMContext):
 
 @dp.message(AddProductStates.waiting_keys)
 async def product_keys(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     data = await state.get_data()
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
@@ -571,7 +574,7 @@ async def product_keys(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_add_keys")
 async def admin_add_keys(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Доступ запрещен")
         return
     products = await get_all_products()
@@ -593,7 +596,7 @@ async def admin_add_keys(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("addkeys_"))
 async def select_for_keys(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     product_id = int(callback.data.split("_")[1])
@@ -607,7 +610,7 @@ async def select_for_keys(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AddKeysStates.waiting_keys)
 async def process_keys_only(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     data = await state.get_data()
     product_id = data["product_id"]
@@ -621,7 +624,7 @@ async def process_keys_only(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_manage_products")
 async def admin_manage_products(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -647,7 +650,7 @@ async def admin_manage_products(callback: CallbackQuery):
 
 @dp.message(lambda m: m.text and m.text.startswith("/delproduct_"))
 async def delete_product_cmd(message: Message):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         product_id = int(message.text.split("_")[1])
@@ -658,7 +661,7 @@ async def delete_product_cmd(message: Message):
 
 @dp.callback_query(lambda c: c.data == "admin_manage_keys")
 async def admin_manage_keys(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -682,7 +685,7 @@ async def admin_manage_keys(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("showkeys_"))
 async def show_keys(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -710,7 +713,7 @@ async def show_keys(callback: CallbackQuery):
 
 @dp.message(lambda m: m.text and m.text.startswith("/delkey_"))
 async def delete_key_cmd(message: Message):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         key_id = int(message.text.split("_")[1])
@@ -721,7 +724,7 @@ async def delete_key_cmd(message: Message):
 
 @dp.callback_query(lambda c: c.data == "admin_add_balance")
 async def admin_add_balance(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Доступ запрещен")
         return
     await state.set_state(AdminAddBalanceStates.waiting_user_id)
@@ -736,7 +739,7 @@ async def admin_add_balance(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AdminAddBalanceStates.waiting_user_id)
 async def process_add_balance_user_id(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         user_id = int(message.text.strip())
@@ -752,7 +755,7 @@ async def process_add_balance_user_id(message: Message, state: FSMContext):
 
 @dp.message(AdminAddBalanceStates.waiting_amount)
 async def process_add_balance_amount(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         amount = int(message.text.strip())
@@ -790,7 +793,7 @@ async def process_add_balance_amount(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_broadcast")
 async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Доступ запрещен")
         return
     await state.set_state(AdminBroadcastStates.waiting_message)
@@ -805,7 +808,7 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AdminBroadcastStates.waiting_message)
 async def process_broadcast(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     
     broadcast_text = message.text
@@ -843,7 +846,7 @@ async def process_broadcast(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_create_promocode")
 async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔ Доступ запрещен")
         return
     await state.set_state(AdminCreatePromocodeStates.waiting_code)
@@ -858,7 +861,7 @@ async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AdminCreatePromocodeStates.waiting_code)
 async def create_promocode_code(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     code = message.text.strip().upper()
     await state.update_data(code=code)
@@ -879,7 +882,7 @@ async def create_promocode_code(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("promo_type_"))
 async def create_promocode_type(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -901,7 +904,7 @@ async def create_promocode_type(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AdminCreatePromocodeStates.waiting_value)
 async def create_promocode_value(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         value = int(message.text.strip())
@@ -920,7 +923,7 @@ async def create_promocode_value(message: Message, state: FSMContext):
 
 @dp.message(AdminCreatePromocodeStates.waiting_max_uses)
 async def create_promocode_max_uses(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         max_uses = int(message.text.strip())
@@ -957,7 +960,7 @@ async def create_promocode_max_uses(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_list_promocodes")
 async def admin_list_promocodes(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -991,7 +994,7 @@ async def admin_list_promocodes(callback: CallbackQuery):
 
 @dp.message(lambda m: m.text and m.text.startswith("/del_"))
 async def delete_promocode_cmd(message: Message):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         promocode_id = int(message.text.split("_")[1])
@@ -1002,7 +1005,7 @@ async def delete_promocode_cmd(message: Message):
 
 @dp.callback_query(lambda c: c.data == "admin_ref_config")
 async def admin_ref_config(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -1022,7 +1025,7 @@ async def admin_ref_config(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("ref_type_"))
 async def ref_type_callback(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     
@@ -1044,7 +1047,7 @@ async def ref_type_callback(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(AdminRefBonusStates.waiting_value)
 async def ref_value_callback(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+    if not is_admin(message.from_user.id):
         return
     try:
         value = int(message.text.strip())
@@ -1071,7 +1074,7 @@ async def ref_value_callback(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
+    if not is_admin(callback.from_user.id):
         await callback.answer("⛔")
         return
     stats = await get_stats()
