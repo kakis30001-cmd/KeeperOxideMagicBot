@@ -6,7 +6,7 @@ from threading import Thread
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -46,62 +46,23 @@ BUTTON_EMOJI = {
     "balance": "5807465992363710697",
     "history": "5854776233950188167",
     "home": "5872771279337033184",
+    "back": "5872771279337033184",
     "add_product": "5983399041197675256",
     "add_keys": "6005570495603282482",
     "stats": "5807499888245612254",
 }
 
-def tg_emoji(sticker_id: str, fallback: str = "•") -> str:
+def tg_emoji(sticker_id: str, fallback: str = "") -> str:
     return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
-def button_text(emoji_id: str, text: str, fallback: str = "•") -> str:
-    return f'{tg_emoji(emoji_id, fallback)} {text}'
+def btn_text(emoji_id: str, text: str, fallback: str = "") -> str:
+    return f'{tg_emoji(emoji_id, fallback)}{text}'
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
 
 pending_payments = {}
-
-main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text=button_text(BUTTON_EMOJI["shop"], "Магазин", "🛍️")),
-            KeyboardButton(text=button_text(BUTTON_EMOJI["profile"], "Профиль", "👤"))
-        ],
-        [
-            KeyboardButton(text=button_text(BUTTON_EMOJI["info"], "Информация", "ℹ️"))
-        ]
-    ],
-    resize_keyboard=True
-)
-
-profile_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text=button_text(BUTTON_EMOJI["balance"], "Пополнить баланс", "💰")),
-            KeyboardButton(text=button_text(BUTTON_EMOJI["history"], "История заказов", "📋"))
-        ],
-        [
-            KeyboardButton(text=button_text(BUTTON_EMOJI["home"], "Главная", "🏠"))
-        ]
-    ],
-    resize_keyboard=True
-)
-
-admin_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [
-            KeyboardButton(text=button_text(BUTTON_EMOJI["add_product"], "Добавить товар", "➕")),
-            KeyboardButton(text=button_text(BUTTON_EMOJI["add_keys"], "Добавить ключи", "🔑"))
-        ],
-        [
-            KeyboardButton(text=button_text(BUTTON_EMOJI["stats"], "Статистика", "📊")),
-            KeyboardButton(text=button_text(BUTTON_EMOJI["home"], "Главная", "🏠"))
-        ]
-    ],
-    resize_keyboard=True
-)
 
 class AddProductStates(StatesGroup):
     waiting_name = State()
@@ -140,6 +101,40 @@ async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> 
                 return result.get("payment_url")
             return None
 
+def get_main_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["shop"], " Магазин", "🛍️"), callback_data="menu_shop"),
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["profile"], " Профиль", "👤"), callback_data="menu_profile")
+        ],
+        [
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["info"], " Информация", "ℹ️"), callback_data="menu_info")
+        ]
+    ])
+
+def get_profile_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["balance"], " Пополнить баланс", "💰"), callback_data="profile_deposit"),
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["history"], " История заказов", "📋"), callback_data="profile_history")
+        ],
+        [
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Главное меню", "🏠"), callback_data="menu_main")
+        ]
+    ])
+
+def get_admin_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["add_product"], " Добавить товар", "➕"), callback_data="admin_add_product"),
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["add_keys"], " Добавить ключи", "🔑"), callback_data="admin_add_keys")
+        ],
+        [
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["stats"], " Статистика", "📊"), callback_data="admin_stats"),
+            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Главное меню", "🏠"), callback_data="menu_main")
+        ]
+    ])
+
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
     await add_user(message.from_user.id)
@@ -149,15 +144,19 @@ async def start_cmd(message: Message):
         f"{tg_emoji(STICKERS['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n"
         f"{tg_emoji(STICKERS['click_below'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
+    await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
 
-@dp.message(lambda m: m.text and "Главная" in m.text)
-async def back_to_main(message: Message):
-    text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>"
-    await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
+@dp.callback_query(lambda c: c.data == "menu_main")
+async def menu_main(callback: CallbackQuery):
+    text = (
+        f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>\n\n"
+        f"Выберите действие:"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_main_keyboard())
+    await callback.answer()
 
-@dp.message(lambda m: m.text and "Информация" in m.text)
-async def info_cmd(message: Message):
+@dp.callback_query(lambda c: c.data == "menu_info")
+async def menu_info(callback: CallbackQuery):
     info_text = (
         f"{tg_emoji(STICKERS['info_title'], 'ℹ')} <b>ИНФОРМАЦИЯ</b> {tg_emoji(STICKERS['info_title'], 'ℹ')}\n\n"
         f"{tg_emoji(STICKERS['official_bot'], '✨')} <b>Официальный бот по продаже ключей для чит клиента Magic</b>\n\n"
@@ -173,48 +172,55 @@ async def info_cmd(message: Message):
         f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
     )
-    await message.answer(info_text, parse_mode="HTML", disable_web_page_preview=True)
+    await callback.message.edit_text(info_text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_main")]]))
+    await callback.answer()
 
-@dp.message(lambda m: m.text and "Магазин" in m.text)
-async def shop_cmd(message: Message):
+@dp.callback_query(lambda c: c.data == "menu_shop")
+async def menu_shop(callback: CallbackQuery):
     products = await get_all_products()
     if not products:
-        await message.answer(
+        await callback.message.edit_text(
             f"{tg_emoji(STICKERS['keys_count'], '📭')} <b>Товаров пока нет</b>",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_main")]])
         )
+        await callback.answer()
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🎮 {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
         for p in products
-    ])
+    ] + [[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_main")]])
     
-    await message.answer(
+    await callback.message.edit_text(
         f"{tg_emoji(STICKERS['shop_title'], '🛍')} <b>Выберите интересующий вас товар</b>",
         parse_mode="HTML",
         reply_markup=kb
     )
+    await callback.answer()
 
-@dp.message(lambda m: m.text and "Профиль" in m.text)
-async def profile_cmd(message: Message):
-    balance = await get_balance(message.from_user.id)
+@dp.callback_query(lambda c: c.data == "menu_profile")
+async def menu_profile(callback: CallbackQuery):
+    balance = await get_balance(callback.from_user.id)
     text = (
         f"{tg_emoji(STICKERS['profile'], '👤')} <b>Профиль</b>\n\n"
-        f"{tg_emoji(STICKERS['id_icon'], '🆔')} ID: <code>{message.from_user.id}</code>\n"
+        f"{tg_emoji(STICKERS['id_icon'], '🆔')} ID: <code>{callback.from_user.id}</code>\n"
         f"{tg_emoji(STICKERS['balance_icon'], '💰')} Баланс: <code>{balance} ₽</code>"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_profile_keyboard())
+    await callback.answer()
 
-@dp.message(lambda m: m.text and "История заказов" in m.text)
-async def orders_history(message: Message):
-    purchases = await get_user_purchases(message.from_user.id)
+@dp.callback_query(lambda c: c.data == "profile_history")
+async def profile_history(callback: CallbackQuery):
+    purchases = await get_user_purchases(callback.from_user.id)
     
     if not purchases:
-        await message.answer(
+        await callback.message.edit_text(
             f"{tg_emoji(STICKERS['keys_count'], '📋')} <b>История заказов</b>\n\nУ вас пока нет покупок.",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_profile")]])
         )
+        await callback.answer()
         return
     
     history_text = f"{tg_emoji(STICKERS['product_selected'], '🎉')} <b>История заказов</b>\n\n"
@@ -225,16 +231,20 @@ async def orders_history(message: Message):
         history_text += f"📅 Дата: {p['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
         history_text += "─" * 15 + "\n"
     
-    await message.answer(history_text, parse_mode="HTML")
+    await callback.message.edit_text(history_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_profile")]]))
+    await callback.answer()
 
-@dp.message(lambda m: m.text and "Пополнить баланс" in m.text)
-async def deposit_cmd(message: Message, state: FSMContext):
+@dp.callback_query(lambda c: c.data == "profile_deposit")
+async def profile_deposit(callback: CallbackQuery, state: FSMContext):
     await state.set_state(DepositStates.waiting_amount)
-    await message.answer(
+    await callback.message.edit_text(
         f"{tg_emoji(STICKERS['enter_amount'], '💰')} <b>Укажите сумму пополнения баланса</b>\n\n"
-        f"Введите сумму от 10 до 50000 ₽\nПример: <code>500</code>",
-        parse_mode="HTML"
+        f"Введите сумму от 10 до 50000 ₽\nПример: <code>500</code>\n\n"
+        f"Отправьте число в этот чат",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Отмена", "❌"), callback_data="menu_profile")]])
     )
+    await callback.answer()
 
 @dp.message(DepositStates.waiting_amount)
 async def process_deposit_amount(message: Message, state: FSMContext):
@@ -248,19 +258,36 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             return
         
         await state.update_data(amount=amount)
+        await state.clear()
         
-        payment_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"💳 СБП / Криптовалюта (Platega)", callback_data=f"payment_platega_{amount}")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_payment")]
-        ])
+        payment_id = str(uuid.uuid4())
+        pending_payments[message.from_user.id] = {
+            "amount": amount,
+            "payment_id": payment_id,
+            "status": "pending"
+        }
+        
+        payment_url = await create_platega_payment(amount, payment_id, message.from_user.id)
+        
+        if not payment_url:
+            await message.answer(
+                f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Ошибка создания платежа</b>\n\n"
+                f"Попробуйте позже или обратитесь в поддержку.",
+                parse_mode="HTML",
+                reply_markup=get_profile_keyboard()
+            )
+            return
         
         await message.answer(
-            f"{tg_emoji(STICKERS['payment_method'], '💰')} <b>Пополнение на {amount} ₽</b>\n\n"
-            f"{tg_emoji(STICKERS['select_payment'], '👇')} <b>Выберите способ оплаты</b>",
+            f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
+            f"Сумма: <code>{amount} ₽</code>\n\n"
+            f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
+            f"⚡ После оплаты баланс пополнится автоматически.\n\n"
+            f"🆔 ID платежа: <code>{payment_id}</code>",
             parse_mode="HTML",
-            reply_markup=payment_kb
+            disable_web_page_preview=True,
+            reply_markup=get_profile_keyboard()
         )
-        await state.clear()
         
     except ValueError:
         await message.answer(
@@ -268,54 +295,8 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
 
-@dp.callback_query(lambda c: c.data == "cancel_payment")
-async def cancel_payment(callback: types.CallbackQuery):
-    await callback.message.delete()
-    balance = await get_balance(callback.from_user.id)
-    text = (
-        f"{tg_emoji(STICKERS['profile'], '👤')} <b>Профиль</b>\n\n"
-        f"{tg_emoji(STICKERS['id_icon'], '🆔')} ID: <code>{callback.from_user.id}</code>\n"
-        f"{tg_emoji(STICKERS['balance_icon'], '💰')} Баланс: <code>{balance} ₽</code>"
-    )
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("payment_platega_"))
-async def handle_platega_payment(callback: types.CallbackQuery):
-    amount = int(callback.data.split("_")[2])
-    user_id = callback.from_user.id
-    
-    payment_id = str(uuid.uuid4())
-    pending_payments[user_id] = {
-        "amount": amount,
-        "payment_id": payment_id,
-        "status": "pending"
-    }
-    
-    payment_url = await create_platega_payment(amount, payment_id, user_id)
-    
-    if not payment_url:
-        await callback.message.edit_text(
-            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Ошибка создания платежа</b>\n\n"
-            f"Попробуйте позже или обратитесь в поддержку.",
-            parse_mode="HTML"
-        )
-        await callback.answer()
-        return
-    
-    await callback.message.edit_text(
-        f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
-        f"Сумма: <code>{amount} ₽</code>\n\n"
-        f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
-        f"⚡ После оплаты баланс пополнится автоматически.\n\n"
-        f"🆔 ID платежа: <code>{payment_id}</code>",
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
-    await callback.answer()
-
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
-async def handle_buy(callback: types.CallbackQuery):
+async def handle_buy(callback: CallbackQuery):
     product_id = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
     
@@ -353,8 +334,10 @@ async def handle_buy(callback: types.CallbackQuery):
         f"🔗 <b>Ссылка на VIP канал:</b>\n"
         f"<a href='{vip_link}'>Нажмите для вступления</a>",
         parse_mode="HTML",
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " В меню", "🏠"), callback_data="menu_main")]])
     )
+    await callback.message.delete()
     await callback.answer("✅ Покупка успешна!")
 
 @dp.message(Command("admin"))
@@ -366,24 +349,33 @@ async def admin_cmd(message: Message):
     await message.answer(
         f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
         parse_mode="HTML",
-        reply_markup=admin_menu
+        reply_markup=get_admin_keyboard()
     )
 
-@dp.message(lambda m: m.text and "Добавить товар" in m.text)
-async def add_product_cmd(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+@dp.callback_query(lambda c: c.data == "admin_add_product")
+async def admin_add_product(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен")
         return
     await state.set_state(AddProductStates.waiting_name)
-    await message.answer("📝 Введите название товара:")
+    await callback.message.edit_text(
+        "📝 Введите название товара:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Отмена", "❌"), callback_data="admin_cancel")]])
+    )
+    await callback.answer()
 
 @dp.message(AddProductStates.waiting_name)
 async def product_name(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
     await state.update_data(name=message.text)
     await state.set_state(AddProductStates.waiting_price)
     await message.answer("💰 Введите цену (число):")
 
 @dp.message(AddProductStates.waiting_price)
 async def product_price(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
     try:
         price = int(message.text)
         await state.update_data(price=price)
@@ -394,6 +386,8 @@ async def product_price(message: Message, state: FSMContext):
 
 @dp.message(AddProductStates.waiting_keys)
 async def product_keys(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
     data = await state.get_data()
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
     if not keys:
@@ -402,57 +396,98 @@ async def product_keys(message: Message, state: FSMContext):
     
     product_id = await add_product(data["name"], data["price"])
     await add_keys_to_product(product_id, keys)
-    await message.answer(f"✅ Товар добавлен! {len(keys)} ключей\n📦 ID товара: {product_id}")
+    await message.answer(
+        f"✅ Товар добавлен! {len(keys)} ключей\n📦 ID товара: {product_id}",
+        reply_markup=get_admin_keyboard()
+    )
     await state.clear()
 
-@dp.message(lambda m: m.text and "Добавить ключи" in m.text)
-async def add_keys_cmd(message: Message, state: FSMContext):
-    if message.from_user.id != ADMIN_ID:
+@dp.callback_query(lambda c: c.data == "admin_add_keys")
+async def admin_add_keys(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен")
         return
     products = await get_all_products()
     if not products:
-        await message.answer("❌ Сначала добавьте товар командой ➕ Добавить товар")
+        await callback.message.edit_text(
+            "❌ Сначала добавьте товар",
+            reply_markup=get_admin_keyboard()
+        )
+        await callback.answer()
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"addkeys_{p['id']}")] for p in products
-    ])
-    await message.answer("📦 Выберите товар для добавления ключей:", reply_markup=kb)
+        [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"addkeys_{p['id']}")]
+        for p in products
+    ] + [[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="admin_back")]])
+    
+    await callback.message.edit_text("📦 Выберите товар для добавления ключей:", reply_markup=kb)
+    await callback.answer()
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("addkeys_"))
-async def select_for_keys(callback: types.CallbackQuery, state: FSMContext):
+async def select_for_keys(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔")
         return
     product_id = int(callback.data.split("_")[1])
     await state.update_data(product_id=product_id)
     await state.set_state(AddKeysStates.waiting_keys)
-    await callback.message.answer("🔑 Введите ключи (по одному на строку):")
+    await callback.message.edit_text(
+        "🔑 Введите ключи (по одному на строку):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Отмена", "❌"), callback_data="admin_back")]])
+    )
     await callback.answer()
 
 @dp.message(AddKeysStates.waiting_keys)
 async def process_keys_only(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
     data = await state.get_data()
     product_id = data["product_id"]
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
     await add_keys_to_product(product_id, keys)
-    await message.answer(f"✅ Добавлено {len(keys)} ключей для товара ID {product_id}")
+    await message.answer(
+        f"✅ Добавлено {len(keys)} ключей для товара ID {product_id}",
+        reply_markup=get_admin_keyboard()
+    )
     await state.clear()
 
-@dp.message(lambda m: m.text and "Статистика" in m.text)
-async def stats_cmd(message: Message):
-    if message.from_user.id != ADMIN_ID:
+@dp.callback_query(lambda c: c.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
         return
     stats = await get_stats()
-    await message.answer(
+    await callback.message.edit_text(
         f"📊 <b>Статистика</b>\n\n"
         f"👥 Пользователей: <code>{stats['users']}</code>\n"
         f"💰 Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
         f"🔑 Выдано ключей: <code>{stats['keys_sold']}</code>\n"
         f"🔑 Осталось ключей: <code>{stats['keys_left']}</code>\n"
         f"📦 Товаров в продаже: <code>{stats['products_count']}</code>",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
     )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "admin_back")
+async def admin_back(callback: CallbackQuery):
+    await callback.message.edit_text(
+        f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "admin_cancel")
+async def admin_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
 
 def verify_platega_signature(data: dict) -> bool:
     sign = data.get("sign", "")
@@ -492,7 +527,8 @@ def payment_webhook():
                     f"Новый баланс: <code>{current + amount} ₽</code>",
                     parse_mode="HTML"
                 )
-                del pending_payments[user_id]
+                if user_id in pending_payments:
+                    del pending_payments[user_id]
             
             asyncio.run(update_balance())
             
