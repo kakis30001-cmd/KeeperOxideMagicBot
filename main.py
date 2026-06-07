@@ -481,15 +481,13 @@ async def handle_buy(callback: CallbackQuery):
         vip_link = "https://t.me/+a5AssXS77w01Yjky"
     
     await callback.message.answer(
-    
-    await callback.message.answer(
         f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Покупка успешна!</b>\n\n"
         f"{tg_emoji(STICKERS['keys_count'], '🔑')} <b>Ключей в наличии:</b> {keys_left}\n"
         f"{tg_emoji(STICKERS['price_icon'], '💰')} <b>Цена:</b> {product['price']} ₽\n\n"
         f"{tg_emoji(STICKERS['product_selected'], '🔑')} <b>Ваш ключ:</b> <code>{key_row['key_value']}</code>\n\n"
         f"🔗 <b>Ссылка на VIP канал (одноразовая):</b>\n"
         f"<a href='{vip_link}'>Нажмите для вступления</a>\n\n"
-        f"⚠️ Ссылка действительна только для вас и только один раз!",
+        f"⚠️ Ссылка действительна 30 дней и только для вас!",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]])
