@@ -1,34 +1,33 @@
-from aiogram import Router, F, Bot
-from aiogram.types import Message
+from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.models import async_session, Key, User
-from sqlalchemy import select, func
+from aiogram.types import Message
+from database.models import async_session, Product, Key
+from sqlalchemy import select
 
 admin_router = Router()
 
-class Mailing(StatesGroup):
-    text = State()
+class AddProduct(StatesGroup):
+    name = State()
+    price = State()
+    keys = State()
 
-@admin_router.message(F.text == "/stats")
-async def get_stats(message: Message):
-    async with async_session() as session:
-        user_count = await session.scalar(select(func.count(User.tg_id)))
-        sold_keys = await session.scalar(select(func.count(Key.id)).where(Key.is_sold == True))
-        await message.answer(f"📊 Статистика:\nВсего пользователей: {user_count}\nПродано ключей: {sold_keys}")
+@admin_router.message(Command("admin"))
+async def admin_panel(message: Message):
+    if message.from_user.id != int(os.getenv("ADMIN_ID")): return
+    await message.answer("🛠 Панель админа:\n/add_product - Добавить товар\n/send_all - Рассылка")
 
-@admin_router.message(F.text == "/sendall")
-async def start_mailing(message: Message, state: FSMContext):
-    await message.answer("Введите текст:")
-    await state.set_state(Mailing.text)
+@admin_router.message(Command("add_product"))
+async def start_add(message: Message, state: FSMContext):
+    await message.answer("Введите название товара:")
+    await state.set_state(AddProduct.name)
 
-@admin_router.message(Mailing.text)
-async def send_mailing(message: Message, state: FSMContext, bot: Bot):
-    async with async_session() as session:
-        users = await session.scalars(select(User.tg_id))
-        for user_id in users:
-            try: await bot.send_message(user_id, message.text)
-            except: continue
-    await message.answer("Рассылка завершена")
-    await state.clear()
-    
+@admin_router.message(AddProduct.name)
+async def set_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await message.answer("Введите цену:")
+    await state.set_state(AddProduct.price)
+
+# И так далее: после ввода всех данных - цикл for по строкам ключей
+# для каждого ключа: session.add(Key(product_id=..., key_code=key))
