@@ -1,5 +1,7 @@
 import asyncpg
-from config import DB_URL
+import os
+
+DB_URL = os.getenv("DB_URL")
 
 pool = None
 
