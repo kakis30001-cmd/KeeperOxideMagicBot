@@ -14,7 +14,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
-import requests
 
 from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 from database import (
