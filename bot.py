@@ -31,9 +31,6 @@ class Database:
         return psycopg2.connect(clean_db_url)
 
     def init_db(self):
-        # ... остальной код ...
-
-    def init_db(self):
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute('''
