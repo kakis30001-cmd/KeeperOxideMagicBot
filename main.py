@@ -12,12 +12,12 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL, PLATEGA_SHOP_ID, PLATEGA_API_KEY
+from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
-    get_all_users, add_balance_by_admin
+    get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used, get_all_promocodes, delete_promocode
 )
 
 STICKERS = {
@@ -53,6 +53,7 @@ BUTTON_EMOJI = {
     "stats": "5807499888245612254",
     "add_balance": "5807465992363710697",
     "broadcast": "5872771279337033184",
+    "promocode": "5872771279337033184",
 }
 
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
@@ -83,30 +84,18 @@ class AdminAddBalanceStates(StatesGroup):
 class AdminBroadcastStates(StatesGroup):
     waiting_message = State()
 
+class AdminCreatePromocodeStates(StatesGroup):
+    waiting_code = State()
+    waiting_type = State()
+    waiting_value = State()
+    waiting_max_uses = State()
+
+class ProfileActivatePromocodeStates(StatesGroup):
+    waiting_code = State()
+
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
-    url = "https://platega.com/api/v1/payment"
-    
-    data = {
-        "shop_id": PLATEGA_SHOP_ID,
-        "amount": amount,
-        "currency": "RUB",
-        "order_id": payment_id,
-        "description": f"Пополнение баланса пользователя {user_id}",
-        "success_url": f"{RAILWAY_URL}/payment/success",
-        "fail_url": f"{RAILWAY_URL}/payment/fail",
-        "webhook_url": f"{RAILWAY_URL}/webhook/payment"
-    }
-    
-    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{payment_id}:{PLATEGA_API_KEY}"
-    sign = hashlib.md5(sign_str.encode()).hexdigest()
-    data["sign"] = sign
-    
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=data) as resp:
-            result = await resp.json()
-            if result.get("status") == "success":
-                return result.get("payment_url")
-            return None
+    payment_url = f"https://t.me/{bot.username}?start=pay_{payment_id}"
+    return payment_url
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -126,6 +115,9 @@ def get_profile_keyboard():
             InlineKeyboardButton(text="История заказов", callback_data="profile_history", icon_custom_emoji_id=BUTTON_EMOJI["history"])
         ],
         [
+            InlineKeyboardButton(text="Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])
+        ],
+        [
             InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])
         ]
     ])
@@ -139,6 +131,10 @@ def get_admin_keyboard():
         [
             InlineKeyboardButton(text="Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=BUTTON_EMOJI["add_balance"]),
             InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=BUTTON_EMOJI["broadcast"])
+        ],
+        [
+            InlineKeyboardButton(text="Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]),
+            InlineKeyboardButton(text="Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])
         ],
         [
             InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
@@ -159,10 +155,7 @@ async def start_cmd(message: Message):
 
 @dp.callback_query(lambda c: c.data == "menu_main")
 async def menu_main(callback: CallbackQuery):
-    text = (
-        f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>\n\n"
-        f"Выберите действие:"
-    )
+    text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>\n\nВыберите действие:"
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_main_keyboard())
     await callback.answer()
 
@@ -176,7 +169,7 @@ async def menu_info(callback: CallbackQuery):
         f"• Приобретите ключ через меню\n"
         f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         f"📞 <b>КОНТАКТЫ:</b>\n"
-        f"• Техподдержка: @nikita1055\n"
+        f"• Техподдержка: @ZOJlOTOY\n"
         f"• Основной канал: @keepersell\n"
         f"• Отзывы: https://t.me/KeeperOtzivi\n\n"
         f"⚖ <b>ДОКУМЕНТЫ:</b>\n"
@@ -305,6 +298,73 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             f"{tg_emoji(STICKERS['keys_count'], '❌')} Введите <b>число</b>!\n\nПример: <code>500</code>",
             parse_mode="HTML"
         )
+
+@dp.callback_query(lambda c: c.data == "profile_activate_promocode")
+async def profile_activate_promocode(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(ProfileActivatePromocodeStates.waiting_code)
+    await callback.message.edit_text(
+        f"{tg_emoji(BUTTON_EMOJI['promocode'], '🎫')} <b>Активация промокода</b>\n\n"
+        f"Введите промокод:\n\n"
+        f"Пример: <code>SUMMER2024</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    )
+    await callback.answer()
+
+@dp.message(ProfileActivatePromocodeStates.waiting_code)
+async def process_activate_promocode(message: Message, state: FSMContext):
+    code = message.text.strip().upper()
+    
+    promocode = await get_promocode(code)
+    
+    if not promocode:
+        await message.answer(
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Промокод не найден или уже использован максимальное количество раз</b>",
+            parse_mode="HTML",
+            reply_markup=get_profile_keyboard()
+        )
+        await state.clear()
+        return
+    
+    already_used = await check_promocode_used(message.from_user.id, promocode["id"])
+    
+    if already_used:
+        await message.answer(
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Вы уже активировали этот промокод</b>\n\nКаждый промокод можно использовать только один раз.",
+            parse_mode="HTML",
+            reply_markup=get_profile_keyboard()
+        )
+        await state.clear()
+        return
+    
+    current_balance = await get_balance(message.from_user.id)
+    discount_type = promocode["discount_type"]
+    discount_value = promocode["discount_value"]
+    new_balance = current_balance
+    
+    if discount_type == "percent":
+        new_balance = current_balance + int(current_balance * discount_value / 100)
+        bonus_text = f"{discount_value}% от текущего баланса"
+    elif discount_type == "rubles":
+        new_balance = current_balance + discount_value
+        bonus_text = f"{discount_value} ₽"
+    elif discount_type == "bonus":
+        new_balance = current_balance + discount_value
+        bonus_text = f"{discount_value} ₽ бонусом"
+    
+    await update_user_balance(message.from_user.id, new_balance)
+    await use_promocode(message.from_user.id, promocode["id"])
+    
+    await message.answer(
+        f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Промокод успешно активирован!</b>\n\n"
+        f"🎫 Промокод: <code>{code}</code>\n"
+        f"💰 Вы получили: {bonus_text}\n"
+        f"📊 Было: <code>{current_balance} ₽</code>\n"
+        f"📊 Стало: <code>{new_balance} ₽</code>",
+        parse_mode="HTML",
+        reply_markup=get_profile_keyboard()
+    )
+    await state.clear()
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: CallbackQuery):
@@ -574,117 +634,4 @@ async def process_broadcast(message: Message, state: FSMContext):
             success_count += 1
         except:
             fail_count += 1
-        await asyncio.sleep(0.05)
-    
-    await message.answer(
-        f"✅ <b>Рассылка завершена!</b>\n\n"
-        f"✅ Доставлено: <code>{success_count}</code>\n"
-        f"❌ Не доставлено: <code>{fail_count}</code>",
-        parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
-    )
-    await state.clear()
-
-@dp.callback_query(lambda c: c.data == "admin_stats")
-async def admin_stats(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔")
-        return
-    stats = await get_stats()
-    await callback.message.edit_text(
-        f"📊 <b>Статистика</b>\n\n"
-        f"👥 Пользователей: <code>{stats['users']}</code>\n"
-        f"💰 Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
-        f"🔑 Выдано ключей: <code>{stats['keys_sold']}</code>\n"
-        f"🔑 Осталось ключей: <code>{stats['keys_left']}</code>\n"
-        f"📦 Товаров в продаже: <code>{stats['products_count']}</code>",
-        parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_back")
-async def admin_back(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    await callback.message.edit_text(
-        f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
-        parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
-    )
-    await callback.answer()
-
-def verify_platega_signature(data: dict) -> bool:
-    sign = data.get("sign", "")
-    params = {k: v for k, v in data.items() if k != "sign"}
-    params["api_key"] = PLATEGA_API_KEY
-    params_sorted = sorted(params.items())
-    sign_str = ":".join([str(v) for k, v in params_sorted])
-    expected_sign = hashlib.md5(sign_str.encode()).hexdigest()
-    return sign == expected_sign
-
-@flask_app.route("/webhook/payment", methods=["POST"])
-def payment_webhook():
-    data = request.get_json()
-    
-    if not verify_platega_signature(data):
-        return jsonify({"status": "error", "message": "Invalid signature"}), 400
-    
-    status = data.get("status")
-    order_id = data.get("order_id")
-    amount = int(data.get("amount", 0))
-    
-    if status == "success" and order_id:
-        user_id = None
-        for uid, info in pending_payments.items():
-            if info["payment_id"] == order_id:
-                user_id = uid
-                break
-        
-        if user_id:
-            async def update_balance():
-                current = await get_balance(user_id)
-                await update_user_balance(user_id, current + amount)
-                await bot.send_message(
-                    user_id,
-                    f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Баланс пополнен!</b>\n\n"
-                    f"Сумма: <code>{amount} ₽</code>\n"
-                    f"Новый баланс: <code>{current + amount} ₽</code>",
-                    parse_mode="HTML"
-                )
-                if user_id in pending_payments:
-                    del pending_payments[user_id]
-            
-            asyncio.run(update_balance())
-            
-            return jsonify({"status": "ok"}), 200
-    
-    return jsonify({"status": "error"}), 400
-
-@flask_app.route("/payment/success", methods=["GET"])
-def payment_success():
-    return "Оплата прошла успешно! Можете вернуться в бота.", 200
-
-@flask_app.route("/payment/fail", methods=["GET"])
-def payment_fail():
-    return "Оплата не прошла. Попробуйте снова.", 200
-
-@flask_app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "alive"}), 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    flask_app.run(host="0.0.0.0", port=port)
-
-async def main():
-    await connect_db()
-    await bot.delete_webhook(drop_pending_updates=True)
-    
-    thread = Thread(target=run_flask, daemon=True)
-    thread.start()
-    
-    print("Бот запущен")
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        await asyncio.sleep(0.
