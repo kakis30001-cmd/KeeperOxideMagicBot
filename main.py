@@ -169,8 +169,6 @@ async def menu_info(callback: CallbackQuery):
         f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         f"📞 <b>КОНТАКТЫ:</b>\n"
         f"• Техподдержка: @ZOJlOTOY\n"
-        f"• Основной канал: @keepersell\n"
-        f"• Отзывы: https://t.me/KeeperOtzivi\n\n"
         f"⚖ <b>ДОКУМЕНТЫ:</b>\n"
         f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
