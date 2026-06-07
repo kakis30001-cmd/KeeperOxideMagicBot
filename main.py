@@ -21,6 +21,8 @@ from database import (
     get_all_promocodes, delete_promocode, add_vip_link, get_active_vip_link, get_all_vip_links, deactivate_vip_link
 )
 
+CHANNEL_ID = -1003709565134
+
 STICKERS = {
     "welcome": "5388795032775968174",
     "magic": "5474144592817318927",
