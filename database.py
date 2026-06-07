@@ -169,3 +169,10 @@ async def get_all_users():
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT user_id FROM users")
         return rows
+
+async def add_balance_by_admin(user_id: int, amount: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
+            amount, user_id
+        )
