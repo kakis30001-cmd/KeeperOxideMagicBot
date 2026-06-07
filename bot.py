@@ -25,7 +25,8 @@ def init_db():
 
 init_db()
 
-user_data = {}
+# Временное хранилище для процесса добавления
+temp_data = {}
 
 # --- КЛАВИАТУРЫ ---
 def main_kb(user_id):
@@ -41,72 +42,72 @@ def admin_kb():
     markup.row("🔙 Назад")
     return markup
 
-# --- ОБРАБОТЧИКИ ---
+# --- КОМАНДЫ И ОБРАБОТЧИКИ ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.send_message(message.chat.id, "Добро пожаловать в IceBerg Magic!", reply_markup=main_kb(message.from_user.id))
-
-@bot.message_handler(func=lambda m: m.text == "👤 Профиль")
-def profile(message):
-    conn = get_db()
-    user = conn.execute("SELECT balance FROM users WHERE user_id = ?", (message.from_user.id,)).fetchone()
-    balance = user['balance'] if user else 0
-    conn.close()
-    text = f"👤 <b>Профиль</b>\n🆔 ID: <code>{message.from_user.id}</code>\n💰 Баланс: <b>{balance}₽</b>"
-    bot.send_message(message.chat.id, text, parse_mode="HTML")
-
-@bot.message_handler(func=lambda m: m.text == "🏪 Магазин")
-def shop(message):
-    conn = get_db()
-    products = conn.execute("SELECT * FROM products").fetchall()
-    conn.close()
-    if not products:
-        bot.send_message(message.chat.id, "📦 Магазин пуст.")
-    else:
-        markup = types.InlineKeyboardMarkup()
-        for p in products:
-            markup.add(types.InlineKeyboardButton(f"{p['name']} - {p['price']}₽", callback_data=f"buy_{p['id']}"))
-        bot.send_message(message.chat.id, "Выберите товар:", reply_markup=markup)
-
-# --- АДМИН-ПАНЕЛЬ ---
-@bot.message_handler(func=lambda m: m.text == "⚙️ Админ-панель" and m.from_user.id == ADMIN_ID)
-def admin_panel(message):
-    bot.send_message(message.chat.id, "Панель управления:", reply_markup=admin_kb())
-
-@bot.message_handler(func=lambda m: m.text == "🔙 Назад")
-def back(message):
     bot.send_message(message.chat.id, "Главное меню:", reply_markup=main_kb(message.from_user.id))
 
-# Добавление товара
-@bot.message_handler(func=lambda m: m.text == "➕ Добавить товар" and m.from_user.id == ADMIN_ID)
-def add_prod(message):
-    bot.send_message(message.chat.id, "Введите название товара:")
-    bot.register_next_step_handler(message, lambda m: bot.send_message(message.chat.id, "Введите цену:") or bot.register_next_step_handler(m, lambda price: save_prod(m.text, price.text)))
+@bot.message_handler(func=lambda m: m.text == "⚙️ Админ-панель" and m.from_user.id == ADMIN_ID)
+def admin_panel(message):
+    bot.send_message(message.chat.id, "Админ-панель:", reply_markup=admin_kb())
 
-def save_prod(name, price):
+@bot.message_handler(func=lambda m: m.text == "🔙 Назад")
+def back_to_main(message):
+    bot.send_message(message.chat.id, "Возврат в меню:", reply_markup=main_kb(message.from_user.id))
+
+# --- ДОБАВЛЕНИЕ ТОВАРА (РАЗВЕРНУТО) ---
+@bot.message_handler(func=lambda m: m.text == "➕ Добавить товар" and m.from_user.id == ADMIN_ID)
+def start_add_product(message):
+    bot.send_message(message.chat.id, "Введите название товара:")
+    bot.register_next_step_handler(message, get_product_name)
+
+def get_product_name(message):
+    temp_data[message.chat.id] = {'name': message.text}
+    bot.send_message(message.chat.id, "Теперь введите цену:")
+    bot.register_next_step_handler(message, get_product_price)
+
+def get_product_price(message):
+    name = temp_data[message.chat.id]['name']
+    price = message.text
+    
     conn = get_db()
     conn.execute("INSERT INTO products (name, price) VALUES (?, ?)", (name, int(price)))
     conn.commit()
     conn.close()
-    bot.send_message(ADMIN_ID, f"✅ Товар {name} добавлен.")
+    
+    bot.send_message(message.chat.id, f"✅ Товар '{name}' с ценой {price}₽ добавлен!")
+    # Удаляем временные данные
+    del temp_data[message.chat.id]
 
-# Создание промокода
+# --- СОЗДАНИЕ ПРОМОКОДА (РАЗВЕРНУТО) ---
 @bot.message_handler(func=lambda m: m.text == "🎟 Создать промокод" and m.from_user.id == ADMIN_ID)
-def add_promo(message):
+def start_add_promo(message):
     bot.send_message(message.chat.id, "Введите название промокода:")
-    bot.register_next_step_handler(message, lambda m: bot.send_message(message.chat.id, "Введите скидку (рубли):") or bot.register_next_step_handler(m, lambda disc: save_promo(m.text, disc.text)))
+    bot.register_next_step_handler(message, get_promo_name)
 
-def save_promo(code, discount):
+def get_promo_name(message):
+    temp_data[message.chat.id] = {'promo_name': message.text}
+    bot.send_message(message.chat.id, "Введите скидку (в рублях):")
+    bot.register_next_step_handler(message, get_promo_discount)
+
+def get_promo_discount(message):
+    code = temp_data[message.chat.id]['promo_name']
+    discount = message.text
+    
     conn = get_db()
     conn.execute("INSERT INTO promos (code, discount) VALUES (?, ?)", (code, int(discount)))
     conn.commit()
     conn.close()
-    bot.send_message(ADMIN_ID, f"✅ Промокод {code} на {discount}₽ создан.")
+    
+    bot.send_message(message.chat.id, f"✅ Промокод '{code}' на {discount}₽ создан!")
+    del temp_data[message.chat.id]
 
 # --- ВЕБХУК ---
 @app.route('/telegram_webhook', methods=['POST'])
 def webhook():
-    bot.process_new_updates([types.Update.de_json(request.get_data().decode('UTF-8'))])
+    json_str = request.get_data().decode('UTF-8')
+    update = types.Update.de_json(json_str)
+    bot.process_new_updates([update])
     return '!', 200
 
 if __name__ == '__main__':
