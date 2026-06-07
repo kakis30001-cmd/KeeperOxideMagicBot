@@ -1,33 +1,46 @@
+import os
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message
 from database.models import async_session, Product, Key
-from sqlalchemy import select
 
 admin_router = Router()
 
-class AddProduct(StatesGroup):
+class AddProd(StatesGroup):
     name = State()
     price = State()
     keys = State()
 
-@admin_router.message(Command("admin"))
-async def admin_panel(message: Message):
+@admin_router.message(Command("add"))
+async def add_prod(message: Message, state: FSMContext):
     if message.from_user.id != int(os.getenv("ADMIN_ID")): return
-    await message.answer("🛠 Панель админа:\n/add_product - Добавить товар\n/send_all - Рассылка")
+    await message.answer("Название товара:")
+    await state.set_state(AddProd.name)
 
-@admin_router.message(Command("add_product"))
-async def start_add(message: Message, state: FSMContext):
-    await message.answer("Введите название товара:")
-    await state.set_state(AddProduct.name)
-
-@admin_router.message(AddProduct.name)
-async def set_name(message: Message, state: FSMContext):
+@admin_router.message(AddProd.name)
+async def get_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("Введите цену:")
-    await state.set_state(AddProduct.price)
+    await message.answer("Цена:")
+    await state.set_state(AddProd.price)
 
-# И так далее: после ввода всех данных - цикл for по строкам ключей
-# для каждого ключа: session.add(Key(product_id=..., key_code=key))
+@admin_router.message(AddProd.price)
+async def get_price(message: Message, state: FSMContext):
+    await state.update_data(price=int(message.text))
+    await message.answer("Ключи (каждый с новой строки):")
+    await state.set_state(AddProd.keys)
+
+@admin_router.message(AddProd.keys)
+async def get_keys(message: Message, state: FSMContext):
+    data = await state.get_data()
+    async with async_session() as session:
+        prod = Product(name=data['name'], price=data['price'])
+        session.add(prod)
+        await session.flush()
+        for k in message.text.split('\n'):
+            session.add(Key(product_id=prod.id, key_code=k.strip()))
+        await session.commit()
+    await message.answer("Товар добавлен!")
+    await state.clear()
+    
