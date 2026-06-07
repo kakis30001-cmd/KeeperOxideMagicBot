@@ -1,6 +1,8 @@
 import asyncio
 import os
 import uuid
+import hashlib
+import hmac
 from threading import Thread
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
@@ -9,8 +11,9 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKe
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL
+from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL, PLATEGA_SHOP_ID, PLATEGA_API_KEY
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
@@ -81,6 +84,31 @@ class AddKeysStates(StatesGroup):
 
 class DepositStates(StatesGroup):
     waiting_amount = State()
+
+async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
+    url = "https://platega.com/api/v1/payment"
+    
+    data = {
+        "shop_id": PLATEGA_SHOP_ID,
+        "amount": amount,
+        "currency": "RUB",
+        "order_id": payment_id,
+        "description": f"Пополнение баланса пользователя {user_id}",
+        "success_url": f"{RAILWAY_URL}/payment/success",
+        "fail_url": f"{RAILWAY_URL}/payment/fail",
+        "webhook_url": f"{RAILWAY_URL}/webhook/payment"
+    }
+    
+    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{payment_id}:{PLATEGA_API_KEY}"
+    sign = hashlib.md5(sign_str.encode()).hexdigest()
+    data["sign"] = sign
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=data) as resp:
+            result = await resp.json()
+            if result.get("status") == "success":
+                return result.get("payment_url")
+            return None
 
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
@@ -234,7 +262,16 @@ async def handle_platega_payment(callback: types.CallbackQuery):
         "status": "pending"
     }
     
-    payment_url = f"https://platega.com/pay?amount={amount}&payment_id={payment_id}&user_id={user_id}"
+    payment_url = await create_platega_payment(amount, payment_id, user_id)
+    
+    if not payment_url:
+        await callback.message.edit_text(
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Ошибка создания платежа</b>\n\n"
+            f"Попробуйте позже или обратитесь в поддержку.",
+            parse_mode="HTML"
+        )
+        await callback.answer()
+        return
     
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
@@ -387,35 +424,59 @@ async def stats_cmd(message: Message):
         parse_mode="HTML"
     )
 
+def verify_platega_signature(data: dict) -> bool:
+    sign = data.get("sign", "")
+    params = {k: v for k, v in data.items() if k != "sign"}
+    params["api_key"] = PLATEGA_API_KEY
+    params_sorted = sorted(params.items())
+    sign_str = ":".join([str(v) for k, v in params_sorted])
+    expected_sign = hashlib.md5(sign_str.encode()).hexdigest()
+    return sign == expected_sign
+
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
     data = request.get_json()
     
-    payment_id = data.get("payment_id")
-    user_id = data.get("user_id")
-    amount = data.get("amount")
-    status = data.get("status")
+    if not verify_platega_signature(data):
+        return jsonify({"status": "error", "message": "Invalid signature"}), 400
     
-    if status == "success" and user_id and amount:
-        async def update_balance():
-            current = await get_balance(user_id)
-            await update_user_balance(user_id, current + amount)
-            await bot.send_message(
-                user_id,
-                f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Баланс пополнен!</b>\n\n"
-                f"Сумма: <code>{amount} ₽</code>\n"
-                f"Новый баланс: <code>{current + amount} ₽</code>",
-                parse_mode="HTML"
-            )
+    status = data.get("status")
+    order_id = data.get("order_id")
+    amount = int(data.get("amount", 0))
+    
+    if status == "success" and order_id:
+        user_id = None
+        for uid, info in pending_payments.items():
+            if info["payment_id"] == order_id:
+                user_id = uid
+                break
         
-        asyncio.run(update_balance())
-        
-        if user_id in pending_payments:
-            del pending_payments[user_id]
-        
-        return jsonify({"status": "ok"}), 200
+        if user_id:
+            async def update_balance():
+                current = await get_balance(user_id)
+                await update_user_balance(user_id, current + amount)
+                await bot.send_message(
+                    user_id,
+                    f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Баланс пополнен!</b>\n\n"
+                    f"Сумма: <code>{amount} ₽</code>\n"
+                    f"Новый баланс: <code>{current + amount} ₽</code>",
+                    parse_mode="HTML"
+                )
+                del pending_payments[user_id]
+            
+            asyncio.run(update_balance())
+            
+            return jsonify({"status": "ok"}), 200
     
     return jsonify({"status": "error"}), 400
+
+@flask_app.route("/payment/success", methods=["GET"])
+def payment_success():
+    return "Оплата прошла успешно! Можете вернуться в бота.", 200
+
+@flask_app.route("/payment/fail", methods=["GET"])
+def payment_fail():
+    return "Оплата не прошла. Попробуйте снова.", 200
 
 @flask_app.route("/health", methods=["GET"])
 def health():
