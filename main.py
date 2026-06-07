@@ -94,8 +94,7 @@ class ProfileActivatePromocodeStates(StatesGroup):
     waiting_code = State()
 
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
-    payment_url = f"https://t.me/{bot.username}?start=pay_{payment_id}"
-    return payment_url
+    return None
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -275,18 +274,17 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
         if not payment_url:
             await message.answer(
-                f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Ошибка создания платежа</b>\n\n"
-                f"Попробуйте позже или обратитесь в поддержку.",
+                f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Платежная система временно недоступна</b>\n\n"
+                f"Свяжитесь с администратором для пополнения баланса.",
                 parse_mode="HTML",
                 reply_markup=get_profile_keyboard()
             )
             return
         
         await message.answer(
-            f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
+            f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата</b>\n\n"
             f"Сумма: <code>{amount} ₽</code>\n\n"
             f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
-            f"⚡ После оплаты баланс пополнится автоматически.\n\n"
             f"🆔 ID платежа: <code>{payment_id}</code>",
             parse_mode="HTML",
             disable_web_page_preview=True,
@@ -319,7 +317,7 @@ async def process_activate_promocode(message: Message, state: FSMContext):
     
     if not promocode:
         await message.answer(
-            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Промокод не найден или уже использован максимальное количество раз</b>",
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Промокод не найден или уже использован</b>",
             parse_mode="HTML",
             reply_markup=get_profile_keyboard()
         )
@@ -330,7 +328,7 @@ async def process_activate_promocode(message: Message, state: FSMContext):
     
     if already_used:
         await message.answer(
-            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Вы уже активировали этот промокод</b>\n\nКаждый промокод можно использовать только один раз.",
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Вы уже активировали этот промокод</b>",
             parse_mode="HTML",
             reply_markup=get_profile_keyboard()
         )
@@ -635,3 +633,57 @@ async def process_broadcast(message: Message, state: FSMContext):
         except:
             fail_count += 1
         await asyncio.sleep(0.05)
+    
+    await message.answer(
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"✅ Доставлено: <code>{success_count}</code>\n"
+        f"❌ Не доставлено: <code>{fail_count}</code>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await state.clear()
+
+@dp.callback_query(lambda c: c.data == "admin_create_promocode")
+async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен")
+        return
+    await state.set_state(AdminCreatePromocodeStates.waiting_code)
+    await callback.message.edit_text(
+        "🎫 <b>Создание промокода</b>\n\n"
+        "Введите название промокода (только латиница и цифры, без пробелов):\n\n"
+        "Пример: <code>SUMMER2024</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    )
+    await callback.answer()
+
+@dp.message(AdminCreatePromocodeStates.waiting_code)
+async def create_promocode_code(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    code = message.text.strip().upper()
+    await state.update_data(code=code)
+    await state.set_state(AdminCreatePromocodeStates.waiting_type)
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Скидка в процентах (%)", callback_data="promo_type_percent")],
+        [InlineKeyboardButton(text="Скидка в рублях (₽)", callback_data="promo_type_rubles")],
+        [InlineKeyboardButton(text="Бонусный баланс (₽)", callback_data="promo_type_bonus")],
+        [InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]
+    ])
+    
+    await message.answer(
+        "📊 <b>Выберите тип промокода:</b>",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("promo_type_"))
+async def create_promocode_type(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    discount_type = callback.data.split("_")[2]
+    await state
