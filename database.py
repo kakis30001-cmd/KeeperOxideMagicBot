@@ -2,15 +2,52 @@ import asyncpg
 from config import DB_URL
 
 pool = None
-
 async def connect_db():
     global pool
 
-    pool = await asyncpg.create_pool(
-        DB_URL,
-        min_size=1,
-        max_size=5
-    )
+    pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
+
+    async with pool.acquire() as conn:
+        # ПРИНУДИТЕЛЬНОЕ УДАЛЕНИЕ СТАРЫХ ТАБЛИЦ (только для первого запуска!)
+        await conn.execute("DROP TABLE IF EXISTS purchases CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS keys_store CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS products CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS users CASCADE")
+        
+        # Создаём заново
+        await conn.execute("""
+        CREATE TABLE users (
+            user_id BIGINT PRIMARY KEY,
+            balance INTEGER DEFAULT 0
+        )
+        """)
+        
+        await conn.execute("""
+        CREATE TABLE products (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            price INTEGER NOT NULL
+        )
+        """)
+        
+        await conn.execute("""
+        CREATE TABLE keys_store (
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+            key_value TEXT NOT NULL,
+            used BOOLEAN DEFAULT FALSE
+        )
+        """)
+        
+        await conn.execute("""
+        CREATE TABLE purchases (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+            price INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
 
     async with pool.acquire() as conn:
         # Таблица users — user_id как PRIMARY KEY
