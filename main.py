@@ -36,12 +36,10 @@ STICKERS = {
     "official_bot": "5870813306826002498",
     "payment_icon": "5807499888245612254",
     "how_to_use": "5771695636411847302",
-    "how_to_use2": "5771695636411847302",
 }
 
 def tg_emoji(sticker_id: str, fallback: str = "•") -> str:
-    """Правильный HTML-тег для анимированного эмодзи (с обязательным символом перед тегом)"""
-    return f'⁉️<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+    return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
 # ========== ИНИЦИАЛИЗАЦИЯ ==========
 bot = Bot(token=BOT_TOKEN)
@@ -53,15 +51,15 @@ pending_payments = {}
 # ========== КЛАВИАТУРЫ ==========
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text=f"🛍 Магазин"), KeyboardButton(text=f"👤 Профиль")],
-        [KeyboardButton(text=f"ℹ Информация")]
+        [KeyboardButton(text="🛍 Магазин"), KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="ℹ Информация")]
     ],
     resize_keyboard=True
 )
 
 profile_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text=f"💰 Пополнить баланс"), KeyboardButton(text=f"📋 История заказов")],
+        [KeyboardButton(text="💰 Пополнить баланс"), KeyboardButton(text="📋 История заказов")],
         [KeyboardButton(text="🏠 Главная")]
     ],
     resize_keyboard=True
@@ -94,9 +92,9 @@ async def start_cmd(message: Message):
     await add_user(message.from_user.id)
     
     text = (
-        f"{tg_emoji(STICKERS['welcome'], '✨')}\n\n"
-        f"{tg_emoji(STICKERS['magic'], '✨')}\n\n"
-        f"{tg_emoji(STICKERS['click_below'], '👇')}"
+        f"{tg_emoji(STICKERS['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
+        f"{tg_emoji(STICKERS['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n"
+        f"{tg_emoji(STICKERS['click_below'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
@@ -209,7 +207,8 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         ])
         
         await message.answer(
-            f"{tg_emoji(STICKERS['payment_method'], '💰')} <b>Пополнение на {amount} ₽</b>\n\n{tg_emoji(STICKERS['select_payment'], '👇')} <b>Выберите способ оплаты</b>",
+            f"{tg_emoji(STICKERS['payment_method'], '💰')} <b>Пополнение на {amount} ₽</b>\n\n"
+            f"{tg_emoji(STICKERS['select_payment'], '👇')} <b>Выберите способ оплаты</b>",
             parse_mode="HTML",
             reply_markup=payment_kb
         )
@@ -246,7 +245,6 @@ async def handle_platega_payment(callback: types.CallbackQuery):
         "status": "pending"
     }
     
-    # ЗАМЕНИ НА РЕАЛЬНЫЙ API PLATEGA
     payment_url = f"https://platega.com/pay?amount={amount}&payment_id={payment_id}&user_id={user_id}"
     
     await callback.message.edit_text(
@@ -402,7 +400,7 @@ async def stats_cmd(message: Message):
         parse_mode="HTML"
     )
 
-# ========== FLASK ВЕБХУК ДЛЯ PLATEGA ==========
+# ========== FLASK ВЕБХУК ==========
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
     data = request.get_json()
@@ -437,7 +435,6 @@ def payment_webhook():
 def health():
     return jsonify({"status": "alive"}), 200
 
-# ========== ЗАПУСК ==========
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
