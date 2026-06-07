@@ -34,7 +34,7 @@ class Database:
         with self.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute('''
-                    CREATE TABLE IF NOT EXISTS users (
+                    CREATE TABLE IF NOT EXISTS tg_users (
                         user_id BIGINT PRIMARY KEY,
                         balance INTEGER DEFAULT 0
                     );
@@ -55,10 +55,12 @@ class Database:
     def get_user(self, user_id):
         with self.get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute('INSERT INTO users (user_id) VALUES (%s) ON CONFLICT DO NOTHING', (user_id,))
-                cur.execute('SELECT balance FROM users WHERE user_id = %s', (user_id,))
+                # Теперь обращаемся к новой таблице tg_users
+                cur.execute('INSERT INTO tg_users (user_id) VALUES (%s) ON CONFLICT DO NOTHING', (user_id,))
+                cur.execute('SELECT balance FROM tg_users WHERE user_id = %s', (user_id,))
                 return cur.fetchone()
 
+# Создаем экземпляр базы
 db = Database()
 db.init_db()
 
