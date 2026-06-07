@@ -681,4 +681,4 @@ async def create_promocode_code(message: Message, state: FSMContext):
     )
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("promo_type_"))
-async def create_promocode_type(callback: CallbackQuery, state: FSMContext
+async def create_promocode_type(callback: CallbackQuery, state: FSMContext):
