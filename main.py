@@ -56,6 +56,8 @@ BUTTON_EMOJI = {
     "promocode": "5872771279337033184",
 }
 
+VIP_CHANNEL_LINK = "https://t.me/+a5AssXS77w01Yjky"
+
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
     return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
@@ -168,7 +170,9 @@ async def menu_info(callback: CallbackQuery):
         f"• Приобретите ключ через меню\n"
         f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         f"📞 <b>КОНТАКТЫ:</b>\n"
-        f"• Техподдержка: @ZOJlOTOY\n"
+        f"• Техподдержка: @nikita1055\n"
+        f"• Основной канал: @keepersell\n"
+        f"• Отзывы: https://t.me/KeeperOtzivi\n\n"
         f"⚖ <b>ДОКУМЕНТЫ:</b>\n"
         f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
@@ -392,15 +396,13 @@ async def handle_buy(callback: CallbackQuery):
     async with pool.acquire() as conn:
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE product_id = $1 AND used = FALSE", product_id)
     
-    vip_link = "https://t.me/joinchat/AAAAAEAAAAAAAAAAAAAAAAAAAAA"
-    
     await callback.message.answer(
         f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Выбран товар • {product['name']}</b>\n\n"
         f"{tg_emoji(STICKERS['keys_count'], '🔑')} <b>Ключей в наличии:</b> {keys_left}\n"
         f"{tg_emoji(STICKERS['price_icon'], '💰')} <b>Цена:</b> {product['price']} ₽\n\n"
         f"{tg_emoji(STICKERS['product_selected'], '🔑')} <b>Ваш ключ:</b> <code>{key_row['key_value']}</code>\n\n"
         f"🔗 <b>Ссылка на VIP канал:</b>\n"
-        f"<a href='{vip_link}'>Нажмите для вступления</a>",
+        f"<a href='{VIP_CHANNEL_LINK}'>Нажмите для вступления</a>",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]])
