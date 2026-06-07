@@ -11,7 +11,9 @@ async def connect_db():
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users(
             user_id BIGINT PRIMARY KEY,
-            balance INTEGER DEFAULT 0
+            balance INTEGER DEFAULT 0,
+            referrer_id BIGINT DEFAULT NULL,
+            ref_bonus_claimed BOOLEAN DEFAULT FALSE
         )
         """)
         
@@ -67,14 +69,54 @@ async def connect_db():
         CREATE TABLE IF NOT EXISTS vip_links(
             id SERIAL PRIMARY KEY,
             link TEXT NOT NULL,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
             created_at TIMESTAMP DEFAULT NOW(),
-            is_active BOOLEAN DEFAULT TRUE
+            used BOOLEAN DEFAULT FALSE
         )
         """)
 
-async def add_user(user_id: int):
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS referral_config(
+            id SERIAL PRIMARY KEY,
+            bonus_type TEXT NOT NULL,
+            bonus_value INTEGER NOT NULL
+        )
+        """)
+        
+        await conn.execute("""
+        INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
+        """)
+
+async def add_user(user_id: int, referrer_id: int = None):
     async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING", user_id)
+        await conn.execute(
+            "INSERT INTO users(user_id, referrer_id) VALUES($1, $2) ON CONFLICT (user_id) DO NOTHING",
+            user_id, referrer_id
+        )
+
+async def get_referrer(user_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT referrer_id FROM users WHERE user_id = $1", user_id)
+
+async def claim_ref_bonus(user_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET ref_bonus_claimed = TRUE WHERE user_id = $1", user_id)
+
+async def is_ref_bonus_claimed(user_id: int) -> bool:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT ref_bonus_claimed FROM users WHERE user_id = $1", user_id) or False
+
+async def get_referral_config():
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT bonus_type, bonus_value FROM referral_config LIMIT 1")
+
+async def update_referral_config(bonus_type: str, bonus_value: int):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE referral_config SET bonus_type = $1, bonus_value = $2", bonus_type, bonus_value)
+
+async def get_referrals_count(user_id: int) -> int:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM users WHERE referrer_id = $1", user_id) or 0
 
 async def get_balance(user_id: int) -> int:
     async with pool.acquire() as conn:
@@ -84,6 +126,10 @@ async def get_balance(user_id: int) -> int:
 async def update_user_balance(user_id: int, new_balance: int):
     async with pool.acquire() as conn:
         await conn.execute("UPDATE users SET balance = $1 WHERE user_id = $2", new_balance, user_id)
+
+async def add_balance(user_id: int, amount: int):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
 
 async def get_all_products():
     async with pool.acquire() as conn:
@@ -161,18 +207,18 @@ async def delete_promocode(promocode_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
 
-async def add_vip_link(link: str):
+async def add_vip_link(link: str, user_id: int):
     async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO vip_links (link) VALUES ($1)", link)
+        await conn.execute("INSERT INTO vip_links (link, user_id) VALUES ($1, $2)", link, user_id)
 
-async def get_active_vip_link():
+async def get_and_use_vip_link(user_id: int):
     async with pool.acquire() as conn:
-        return await conn.fetchrow("SELECT link FROM vip_links WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1")
-
-async def get_all_vip_links():
-    async with pool.acquire() as conn:
-        return await conn.fetch("SELECT * FROM vip_links ORDER BY created_at DESC")
+        row = await conn.fetchrow("SELECT id, link FROM vip_links WHERE user_id = $1 AND used = FALSE LIMIT 1", user_id)
+        if row:
+            await conn.execute("UPDATE vip_links SET used = TRUE WHERE id = $1", row["id"])
+            return row["link"]
+        return None
 
 async def deactivate_vip_link(link_id: int):
     async with pool.acquire() as conn:
-        await conn.execute("UPDATE vip_links SET is_active = FALSE WHERE id = $1", link_id)
+        await conn.execute("UPDATE vip_links SET used = TRUE WHERE id = $1", link_id)
