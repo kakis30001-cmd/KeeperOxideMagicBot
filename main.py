@@ -55,9 +55,6 @@ BUTTON_EMOJI = {
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
     return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
-def btn_text(emoji_id: str, text: str, fallback: str = "") -> str:
-    return f'{tg_emoji(emoji_id, fallback)}{text}'
-
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
@@ -104,34 +101,34 @@ async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["shop"], " Магазин", "🛍️"), callback_data="menu_shop"),
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["profile"], " Профиль", "👤"), callback_data="menu_profile")
+            InlineKeyboardButton(text="Магазин", callback_data="menu_shop", icon_custom_emoji_id=BUTTON_EMOJI["shop"]),
+            InlineKeyboardButton(text="Профиль", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["profile"])
         ],
         [
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["info"], " Информация", "ℹ️"), callback_data="menu_info")
+            InlineKeyboardButton(text="Информация", callback_data="menu_info", icon_custom_emoji_id=BUTTON_EMOJI["info"])
         ]
     ])
 
 def get_profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["balance"], " Пополнить баланс", "💰"), callback_data="profile_deposit"),
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["history"], " История заказов", "📋"), callback_data="profile_history")
+            InlineKeyboardButton(text="Пополнить баланс", callback_data="profile_deposit", icon_custom_emoji_id=BUTTON_EMOJI["balance"]),
+            InlineKeyboardButton(text="История заказов", callback_data="profile_history", icon_custom_emoji_id=BUTTON_EMOJI["history"])
         ],
         [
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Главное меню", "🏠"), callback_data="menu_main")
+            InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])
         ]
     ])
 
 def get_admin_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["add_product"], " Добавить товар", "➕"), callback_data="admin_add_product"),
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["add_keys"], " Добавить ключи", "🔑"), callback_data="admin_add_keys")
+            InlineKeyboardButton(text="Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=BUTTON_EMOJI["add_product"]),
+            InlineKeyboardButton(text="Добавить ключи", callback_data="admin_add_keys", icon_custom_emoji_id=BUTTON_EMOJI["add_keys"])
         ],
         [
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["stats"], " Статистика", "📊"), callback_data="admin_stats"),
-            InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Главное меню", "🏠"), callback_data="menu_main")
+            InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
+            InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])
         ]
     ])
 
@@ -172,7 +169,7 @@ async def menu_info(callback: CallbackQuery):
         f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
     )
-    await callback.message.edit_text(info_text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_main")]]))
+    await callback.message.edit_text(info_text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "menu_shop")
@@ -182,15 +179,15 @@ async def menu_shop(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{tg_emoji(STICKERS['keys_count'], '📭')} <b>Товаров пока нет</b>",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_main")]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
         )
         await callback.answer()
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🎮 {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
+        [InlineKeyboardButton(text=f"{p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
         for p in products
-    ] + [[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_main")]])
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
     
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['shop_title'], '🛍')} <b>Выберите интересующий вас товар</b>",
@@ -218,7 +215,7 @@ async def profile_history(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{tg_emoji(STICKERS['keys_count'], '📋')} <b>История заказов</b>\n\nУ вас пока нет покупок.",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_profile")]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
         )
         await callback.answer()
         return
@@ -231,7 +228,7 @@ async def profile_history(callback: CallbackQuery):
         history_text += f"📅 Дата: {p['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
         history_text += "─" * 15 + "\n"
     
-    await callback.message.edit_text(history_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="menu_profile")]]))
+    await callback.message.edit_text(history_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_deposit")
@@ -242,7 +239,7 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
         f"Введите сумму от 10 до 50000 ₽\nПример: <code>500</code>\n\n"
         f"Отправьте число в этот чат",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Отмена", "❌"), callback_data="menu_profile")]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
     )
     await callback.answer()
 
@@ -335,7 +332,7 @@ async def handle_buy(callback: CallbackQuery):
         f"<a href='{vip_link}'>Нажмите для вступления</a>",
         parse_mode="HTML",
         disable_web_page_preview=True,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " В меню", "🏠"), callback_data="menu_main")]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]])
     )
     await callback.message.delete()
     await callback.answer("✅ Покупка успешна!")
@@ -360,7 +357,7 @@ async def admin_add_product(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AddProductStates.waiting_name)
     await callback.message.edit_text(
         "📝 Введите название товара:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Отмена", "❌"), callback_data="admin_cancel")]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
     )
     await callback.answer()
 
@@ -419,7 +416,7 @@ async def admin_add_keys(callback: CallbackQuery, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"addkeys_{p['id']}")]
         for p in products
-    ] + [[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Назад", "◀️"), callback_data="admin_back")]])
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
     
     await callback.message.edit_text("📦 Выберите товар для добавления ключей:", reply_markup=kb)
     await callback.answer()
@@ -434,7 +431,7 @@ async def select_for_keys(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AddKeysStates.waiting_keys)
     await callback.message.edit_text(
         "🔑 Введите ключи (по одному на строку):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=btn_text(BUTTON_EMOJI["home"], " Отмена", "❌"), callback_data="admin_back")]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
     )
     await callback.answer()
 
@@ -471,16 +468,7 @@ async def admin_stats(callback: CallbackQuery):
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "admin_back")
-async def admin_back(callback: CallbackQuery):
-    await callback.message.edit_text(
-        f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
-        parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
-    )
-    await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_cancel")
-async def admin_cancel(callback: CallbackQuery, state: FSMContext):
+async def admin_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
