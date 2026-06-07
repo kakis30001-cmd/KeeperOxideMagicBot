@@ -17,7 +17,6 @@ from database import (
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats
 )
 
-# ========== ТВОИ АНИМИРОВАННЫЕ СТИКЕРЫ (ID) ==========
 STICKERS = {
     "welcome": "5388795032775968174",
     "magic": "5474144592817318927",
@@ -41,14 +40,12 @@ STICKERS = {
 def tg_emoji(sticker_id: str, fallback: str = "•") -> str:
     return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
-# ========== ИНИЦИАЛИЗАЦИЯ ==========
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
 
 pending_payments = {}
 
-# ========== КЛАВИАТУРЫ С ЭМОДЗИ В КНОПКАХ ==========
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🛍️ Магазин"), KeyboardButton(text="👤 Профиль")],
@@ -73,7 +70,6 @@ admin_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# ========== FSM ==========
 class AddProductStates(StatesGroup):
     waiting_name = State()
     waiting_price = State()
@@ -86,7 +82,6 @@ class AddKeysStates(StatesGroup):
 class DepositStates(StatesGroup):
     waiting_amount = State()
 
-# ========== КОМАНДЫ ==========
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
     await add_user(message.from_user.id)
@@ -103,7 +98,6 @@ async def back_to_main(message: Message):
     text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>"
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
-# ========== ИНФОРМАЦИЯ ==========
 @dp.message(lambda m: m.text == "ℹ️ Информация")
 async def info_cmd(message: Message):
     info_text = (
@@ -123,7 +117,6 @@ async def info_cmd(message: Message):
     )
     await message.answer(info_text, parse_mode="HTML", disable_web_page_preview=True)
 
-# ========== МАГАЗИН ==========
 @dp.message(lambda m: m.text == "🛍️ Магазин")
 async def shop_cmd(message: Message):
     products = await get_all_products()
@@ -145,7 +138,6 @@ async def shop_cmd(message: Message):
         reply_markup=kb
     )
 
-# ========== ПРОФИЛЬ ==========
 @dp.message(lambda m: m.text == "👤 Профиль")
 async def profile_cmd(message: Message):
     balance = await get_balance(message.from_user.id)
@@ -156,7 +148,6 @@ async def profile_cmd(message: Message):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
 
-# ========== ИСТОРИЯ ЗАКАЗОВ ==========
 @dp.message(lambda m: m.text == "📋 История заказов")
 async def orders_history(message: Message):
     purchases = await get_user_purchases(message.from_user.id)
@@ -178,7 +169,6 @@ async def orders_history(message: Message):
     
     await message.answer(history_text, parse_mode="HTML")
 
-# ========== ПОПОЛНЕНИЕ БАЛАНСА ==========
 @dp.message(lambda m: m.text == "💰 Пополнить баланс")
 async def deposit_cmd(message: Message, state: FSMContext):
     await state.set_state(DepositStates.waiting_amount)
@@ -232,7 +222,6 @@ async def cancel_payment(callback: types.CallbackQuery):
     await callback.message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
     await callback.answer()
 
-# ========== ОПЛАТА PLATEGA ==========
 @dp.callback_query(lambda c: c.data and c.data.startswith("payment_platega_"))
 async def handle_platega_payment(callback: types.CallbackQuery):
     amount = int(callback.data.split("_")[2])
@@ -258,7 +247,6 @@ async def handle_platega_payment(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# ========== ПОКУПКА ТОВАРА ==========
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: types.CallbackQuery):
     product_id = int(callback.data.split("_")[1])
@@ -302,7 +290,6 @@ async def handle_buy(callback: types.CallbackQuery):
     )
     await callback.answer("✅ Покупка успешна!")
 
-# ========== АДМИН-КОМАНДЫ ==========
 @dp.message(Command("admin"))
 async def admin_cmd(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -400,7 +387,6 @@ async def stats_cmd(message: Message):
         parse_mode="HTML"
     )
 
-# ========== FLASK ВЕБХУК ==========
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
     data = request.get_json()
@@ -446,7 +432,7 @@ async def main():
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
     
-    print("🤖 Бот запущен!")
+    print("Бот запущен")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
