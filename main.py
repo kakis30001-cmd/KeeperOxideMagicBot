@@ -688,4 +688,169 @@ async def create_promocode_type(callback: CallbackQuery, state: FSMContext):
     
     discount_type = callback.data.split("_")[2]
     await state.update_data(discount_type=discount_type)
-    await state.set_state(
+    await state.set_state(AdminCreatePromocodeStates.waiting_value)
+    
+    if discount_type == "percent":
+        await callback.message.edit_text(
+            "📊 Введите размер скидки в процентах (число от 1 до 100):\n\nПример: <code>10</code>",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            "💰 Введите сумму скидки или бонуса в рублях (число):\n\nПример: <code>500</code>",
+            parse_mode="HTML"
+        )
+    await callback.answer()
+
+@dp.message(AdminCreatePromocodeStates.waiting_value)
+async def create_promocode_value(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        value = int(message.text.strip())
+        if value <= 0:
+            await message.answer("❌ Значение должно быть больше 0")
+            return
+        
+        await state.update_data(discount_value=value)
+        await state.set_state(AdminCreatePromocodeStates.waiting_max_uses)
+        await message.answer(
+            "🔢 Введите максимальное количество активаций промокода:\n\nПример: <code>100</code>",
+            parse_mode="HTML"
+        )
+    except ValueError:
+        await message.answer("❌ Введите число")
+
+@dp.message(AdminCreatePromocodeStates.waiting_max_uses)
+async def create_promocode_max_uses(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        max_uses = int(message.text.strip())
+        if max_uses <= 0:
+            await message.answer("❌ Количество активаций должно быть больше 0")
+            return
+        
+        data = await state.get_data()
+        code = data["code"]
+        discount_type = data["discount_type"]
+        discount_value = data["discount_value"]
+        
+        await create_promocode(code, discount_type, discount_value, max_uses)
+        
+        if discount_type == "percent":
+            type_text = f"{discount_value}%"
+        elif discount_type == "rubles":
+            type_text = f"{discount_value} ₽ (скидка)"
+        else:
+            type_text = f"{discount_value} ₽ (бонус)"
+        
+        await message.answer(
+            f"✅ <b>Промокод успешно создан!</b>\n\n"
+            f"🎫 Код: <code>{code}</code>\n"
+            f"📊 Тип: {type_text}\n"
+            f"🔢 Максимум активаций: <code>{max_uses}</code>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите число")
+
+@dp.callback_query(lambda c: c.data == "admin_list_promocodes")
+async def admin_list_promocodes(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    promocodes = await get_all_promocodes()
+    
+    if not promocodes:
+        await callback.message.edit_text(
+            "📭 <b>Список промокодов пуст</b>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    text = "🎫 <b>Список промокодов</b>\n\n"
+    for p in promocodes:
+        if p["discount_type"] == "percent":
+            type_text = f"{p['discount_value']}%"
+        elif p["discount_type"] == "rubles":
+            type_text = f"{p['discount_value']} ₽ (скидка)"
+        else:
+            type_text = f"{p['discount_value']} ₽ (бонус)"
+        
+        text += f"🔹 <code>{p['code']}</code>\n"
+        text += f"   📊 {type_text}\n"
+        text += f"   📊 Использован: {p['used_count']}/{p['max_uses']}\n"
+        text += f"   🗑️ /del_{p['id']} - удалить\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_admin_keyboard())
+    await callback.answer()
+
+@dp.message(lambda m: m.text and m.text.startswith("/del_"))
+async def delete_promocode_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        promocode_id = int(message.text.split("_")[1])
+        await delete_promocode(promocode_id)
+        await message.answer("✅ Промокод удален!", reply_markup=get_admin_keyboard())
+    except:
+        await message.answer("❌ Ошибка при удалении")
+
+@dp.callback_query(lambda c: c.data == "admin_stats")
+async def admin_stats(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    stats = await get_stats()
+    await callback.message.edit_text(
+        f"📊 <b>Статистика</b>\n\n"
+        f"👥 Пользователей: <code>{stats['users']}</code>\n"
+        f"💰 Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
+        f"🔑 Выдано ключей: <code>{stats['keys_sold']}</code>\n"
+        f"🔑 Осталось ключей: <code>{stats['keys_left']}</code>\n"
+        f"📦 Товаров в продаже: <code>{stats['products_count']}</code>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "admin_back")
+async def admin_back(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text(
+        f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await callback.answer()
+
+@flask_app.route("/webhook/payment", methods=["POST"])
+def payment_webhook():
+    data = request.get_json()
+    return jsonify({"status": "ok"}), 200
+
+@flask_app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "alive"}), 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    flask_app.run(host="0.0.0.0", port=port)
+
+async def main():
+    await connect_db()
+    await bot.delete_webhook(drop_pending_updates=True)
+    thread = Thread(target=run_flask, daemon=True)
+    thread.start()
+    print("Бот запущен")
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
