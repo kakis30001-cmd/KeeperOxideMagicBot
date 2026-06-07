@@ -176,3 +176,44 @@ async def add_balance_by_admin(user_id: int, amount: int):
             "UPDATE users SET balance = balance + $1 WHERE user_id = $2",
             amount, user_id
         )
+
+async def create_promocode(code: str, discount_type: str, discount_value: int, max_uses: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO promocodes (code, discount_type, discount_value, max_uses) VALUES ($1, $2, $3, $4)",
+            code, discount_type, discount_value, max_uses
+        )
+
+async def get_promocode(code: str):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            "SELECT * FROM promocodes WHERE code = $1 AND is_active = TRUE AND used_count < max_uses",
+            code
+        )
+
+async def use_promocode(user_id: int, promocode_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO promocode_uses (user_id, promocode_id) VALUES ($1, $2)",
+            user_id, promocode_id
+        )
+        await conn.execute(
+            "UPDATE promocodes SET used_count = used_count + 1 WHERE id = $1",
+            promocode_id
+        )
+
+async def check_promocode_used(user_id: int, promocode_id: int):
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id FROM promocode_uses WHERE user_id = $1 AND promocode_id = $2",
+            user_id, promocode_id
+        )
+        return row is not None
+
+async def get_all_promocodes():
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT * FROM promocodes ORDER BY id DESC")
+
+async def delete_promocode(promocode_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
