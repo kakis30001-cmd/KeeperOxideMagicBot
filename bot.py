@@ -9,31 +9,14 @@ ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Инициализация базы данных SQLite
-def init_sqlite():
-    conn = sqlite3.connect('shop.db', check_same_thread=False)
-    cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS users 
-                      (user_id INTEGER PRIMARY KEY, balance INTEGER DEFAULT 0)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS products 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, price INTEGER)''')
-    cursor.execute('''CREATE TABLE IF NOT EXISTS promos 
-                      (code TEXT PRIMARY KEY, discount INTEGER)''')
-    conn.commit()
-    return conn
+# Работа с SQLite (на Railway лучше создать базу в /tmp/shop.db или использовать Postgre)
+conn = sqlite3.connect('shop.db', check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute('CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)')
+cursor.execute('CREATE TABLE IF NOT EXISTS keys (id INTEGER PRIMARY KEY, prod_id INTEGER, key_text TEXT)')
+conn.commit()
 
-db_conn = init_sqlite()
-
-# Хранилище состояний (FSM)
 user_states = {}
-
-# --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
-def get_user(user_id):
-    cursor = db_conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
-    db_conn.commit()
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    return cursor.fetchone()[0]
 
 # --- КЛАВИАТУРЫ ---
 def main_markup():
@@ -41,45 +24,63 @@ def main_markup():
     markup.add("🏪 Магазин", "👤 Профиль")
     return markup
 
-# --- ОБРАБОТЧИКИ ---
-@bot.message_handler(commands=['start'])
-def start(message):
-    get_user(message.from_user.id) # Регистрация в БД
-    bot.send_message(message.chat.id, "Добро пожаловать!\n\nБот для продажи подписок LITE и VIP.\nОплата через Platega.", reply_markup=main_markup())
-
-@bot.message_handler(func=lambda message: message.text == "👤 Профиль")
-def profile(message):
-    balance = get_user(message.from_user.id)
-    text = (f"👤 Профиль: {message.from_user.first_name}\n"
-            f"🆔 ID: <code>{message.from_user.id}</code>\n"
-            f"💰 Баланс: {balance} ₽")
-    
+def back_markup():
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("💳 Пополнить", callback_data="topup"))
-    markup.add(InlineKeyboardButton("🎟 Промокод", callback_data="use_promo"))
-    
-    bot.reply_to(message, text, parse_mode="HTML", reply_markup=markup)
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
+    return markup
 
-# --- АДМИН ПАНЕЛЬ (ПРОМОКОДЫ) ---
-@bot.message_handler(func=lambda message: message.text == "🎟 Создать промокод" and message.from_user.id == ADMIN_ID)
-def promo_step1(message):
-    user_states[message.from_user.id] = "promo_name"
-    bot.send_message(message.chat.id, "Введите название промокода:")
+# --- АДМИНКА ---
+@bot.message_handler(commands=['admin'])
+def admin_cmd(message):
+    if message.from_user.id == ADMIN_ID:
+        markup = ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("➕ Добавить товар", "🔙 Назад")
+        bot.send_message(message.chat.id, "Админ-панель открыта", reply_markup=markup)
 
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "promo_name")
-def promo_step2(message):
-    user_states[message.from_user.id] = {"name": message.text, "state": "promo_value"}
-    bot.send_message(message.chat.id, "Введите скидку в рублях:")
+@bot.message_handler(func=lambda message: message.text == "➕ Добавить товар" and message.from_user.id == ADMIN_ID)
+def add_prod(message):
+    user_states[message.from_user.id] = "wait_name"
+    bot.send_message(message.chat.id, "Введите название товара:")
+
+@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "wait_name")
+def get_name(message):
+    user_states[message.from_user.id] = {"name": message.text, "state": "wait_price"}
+    bot.send_message(message.chat.id, "Введите цену:")
 
 @bot.message_handler(func=lambda message: isinstance(user_states.get(message.from_user.id), dict))
-def promo_step3(message):
+def get_price(message):
     data = user_states.pop(message.from_user.id)
-    cursor = db_conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO promos (code, discount) VALUES (?, ?)", (data['name'], int(message.text)))
-    db_conn.commit()
-    bot.send_message(message.chat.id, f"✅ Промокод {data['name']} на {message.text}₽ создан!")
+    cursor.execute("INSERT INTO products (name, price) VALUES (?, ?)", (data['name'], int(message.text)))
+    conn.commit()
+    bot.send_message(message.chat.id, "✅ Товар добавлен!")
 
-# --- ВЕБХУК ---
+# --- МАГАЗИН И ОБРАБОТКА ---
+@bot.message_handler(func=lambda message: message.text == "🏪 Магазин")
+def shop(message):
+    cursor.execute("SELECT id, name, price FROM products")
+    products = cursor.fetchall()
+    if not products:
+        bot.send_message(message.chat.id, "📦 В магазине пока пусто.", reply_markup=back_markup())
+        return
+    
+    markup = InlineKeyboardMarkup()
+    for p in products:
+        markup.add(InlineKeyboardButton(f"{p[1]} - {p[2]}₽", callback_data=f"buy_{p[0]}"))
+    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
+    bot.send_message(message.chat.id, "Выберите товар:", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_handler(call):
+    if call.data == "main_menu":
+        bot.edit_message_text("Возвращаю в меню...", call.message.chat.id, call.message.message_id)
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+        bot.send_message(call.message.chat.id, "Главное меню:", reply_markup=main_markup())
+    
+    elif call.data.startswith("buy_"):
+        prod_id = call.data.split("_")[1]
+        bot.answer_callback_query(call.id, "Вы выбрали товар!")
+        # Тут логика оплаты
+
 @app.route('/telegram_webhook', methods=['POST'])
 def webhook():
     bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
