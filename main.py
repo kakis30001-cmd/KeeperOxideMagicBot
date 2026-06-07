@@ -2,7 +2,6 @@ import asyncio
 import os
 import uuid
 import hashlib
-import hmac
 from threading import Thread
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
@@ -40,8 +39,23 @@ STICKERS = {
     "how_to_use": "5771695636411847302",
 }
 
+BUTTON_EMOJI = {
+    "shop": "5983399041197675256",
+    "profile": "5870994129244131212",
+    "info": "5870813306826002498",
+    "balance": "5807465992363710697",
+    "history": "5854776233950188167",
+    "home": "5872771279337033184",
+    "add_product": "5983399041197675256",
+    "add_keys": "6005570495603282482",
+    "stats": "5807499888245612254",
+}
+
 def tg_emoji(sticker_id: str, fallback: str = "•") -> str:
     return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+
+def button_text(emoji_id: str, text: str, fallback: str = "•") -> str:
+    return f'{tg_emoji(emoji_id, fallback)} {text}'
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -51,24 +65,40 @@ pending_payments = {}
 
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🛍️ Магазин"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="ℹ️ Информация")]
+        [
+            KeyboardButton(text=button_text(BUTTON_EMOJI["shop"], "Магазин", "🛍️")),
+            KeyboardButton(text=button_text(BUTTON_EMOJI["profile"], "Профиль", "👤"))
+        ],
+        [
+            KeyboardButton(text=button_text(BUTTON_EMOJI["info"], "Информация", "ℹ️"))
+        ]
     ],
     resize_keyboard=True
 )
 
 profile_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="💰 Пополнить баланс"), KeyboardButton(text="📋 История заказов")],
-        [KeyboardButton(text="🏠 Главная")]
+        [
+            KeyboardButton(text=button_text(BUTTON_EMOJI["balance"], "Пополнить баланс", "💰")),
+            KeyboardButton(text=button_text(BUTTON_EMOJI["history"], "История заказов", "📋"))
+        ],
+        [
+            KeyboardButton(text=button_text(BUTTON_EMOJI["home"], "Главная", "🏠"))
+        ]
     ],
     resize_keyboard=True
 )
 
 admin_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="🔑 Добавить ключи")],
-        [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🏠 Главная")]
+        [
+            KeyboardButton(text=button_text(BUTTON_EMOJI["add_product"], "Добавить товар", "➕")),
+            KeyboardButton(text=button_text(BUTTON_EMOJI["add_keys"], "Добавить ключи", "🔑"))
+        ],
+        [
+            KeyboardButton(text=button_text(BUTTON_EMOJI["stats"], "Статистика", "📊")),
+            KeyboardButton(text=button_text(BUTTON_EMOJI["home"], "Главная", "🏠"))
+        ]
     ],
     resize_keyboard=True
 )
@@ -121,12 +151,12 @@ async def start_cmd(message: Message):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
-@dp.message(lambda m: m.text == "🏠 Главная")
+@dp.message(lambda m: m.text and "Главная" in m.text)
 async def back_to_main(message: Message):
     text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>"
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
-@dp.message(lambda m: m.text == "ℹ️ Информация")
+@dp.message(lambda m: m.text and "Информация" in m.text)
 async def info_cmd(message: Message):
     info_text = (
         f"{tg_emoji(STICKERS['info_title'], 'ℹ')} <b>ИНФОРМАЦИЯ</b> {tg_emoji(STICKERS['info_title'], 'ℹ')}\n\n"
@@ -145,7 +175,7 @@ async def info_cmd(message: Message):
     )
     await message.answer(info_text, parse_mode="HTML", disable_web_page_preview=True)
 
-@dp.message(lambda m: m.text == "🛍️ Магазин")
+@dp.message(lambda m: m.text and "Магазин" in m.text)
 async def shop_cmd(message: Message):
     products = await get_all_products()
     if not products:
@@ -166,7 +196,7 @@ async def shop_cmd(message: Message):
         reply_markup=kb
     )
 
-@dp.message(lambda m: m.text == "👤 Профиль")
+@dp.message(lambda m: m.text and "Профиль" in m.text)
 async def profile_cmd(message: Message):
     balance = await get_balance(message.from_user.id)
     text = (
@@ -176,7 +206,7 @@ async def profile_cmd(message: Message):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
 
-@dp.message(lambda m: m.text == "📋 История заказов")
+@dp.message(lambda m: m.text and "История заказов" in m.text)
 async def orders_history(message: Message):
     purchases = await get_user_purchases(message.from_user.id)
     
@@ -197,7 +227,7 @@ async def orders_history(message: Message):
     
     await message.answer(history_text, parse_mode="HTML")
 
-@dp.message(lambda m: m.text == "💰 Пополнить баланс")
+@dp.message(lambda m: m.text and "Пополнить баланс" in m.text)
 async def deposit_cmd(message: Message, state: FSMContext):
     await state.set_state(DepositStates.waiting_amount)
     await message.answer(
@@ -339,7 +369,7 @@ async def admin_cmd(message: Message):
         reply_markup=admin_menu
     )
 
-@dp.message(lambda m: m.text == "➕ Добавить товар")
+@dp.message(lambda m: m.text and "Добавить товар" in m.text)
 async def add_product_cmd(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
@@ -375,7 +405,7 @@ async def product_keys(message: Message, state: FSMContext):
     await message.answer(f"✅ Товар добавлен! {len(keys)} ключей\n📦 ID товара: {product_id}")
     await state.clear()
 
-@dp.message(lambda m: m.text == "🔑 Добавить ключи")
+@dp.message(lambda m: m.text and "Добавить ключи" in m.text)
 async def add_keys_cmd(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
@@ -409,7 +439,7 @@ async def process_keys_only(message: Message, state: FSMContext):
     await message.answer(f"✅ Добавлено {len(keys)} ключей для товара ID {product_id}")
     await state.clear()
 
-@dp.message(lambda m: m.text == "📊 Статистика")
+@dp.message(lambda m: m.text and "Статистика" in m.text)
 async def stats_cmd(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
