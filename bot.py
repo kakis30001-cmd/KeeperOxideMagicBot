@@ -26,7 +26,12 @@ admin_data = {}
 # ============================================
 class Database:
     def get_connection(self):
-        return psycopg2.connect(DB_URL)
+        # Автоматически убираем +asyncpg, если он есть в переменной
+        clean_db_url = DB_URL.replace("postgresql+asyncpg://", "postgresql://")
+        return psycopg2.connect(clean_db_url)
+
+    def init_db(self):
+        # ... остальной код ...
 
     def init_db(self):
         with self.get_connection() as conn:
