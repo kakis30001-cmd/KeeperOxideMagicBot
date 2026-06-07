@@ -2,8 +2,6 @@ import asyncio
 import os
 import uuid
 import hashlib
-import hmac
-import json
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request, jsonify
@@ -14,7 +12,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
-import requests
 
 from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 from database import (
@@ -22,8 +19,9 @@ from database import (
     add_product, add_keys_to_product, get_unused_key,
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
     get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used,
-    get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_referral_config,
-    update_referral_config, add_balance, get_product_by_id, delete_product, get_keys_by_product, delete_key
+    get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_paid_referrals_count,
+    get_referral_config, update_referral_config, add_balance, get_product_by_id,
+    delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased
 )
 
 STICKERS = {
@@ -106,12 +104,6 @@ class AdminRefBonusStates(StatesGroup):
     waiting_type = State()
     waiting_value = State()
 
-class AdminDeleteProductStates(StatesGroup):
-    waiting_product_id = State()
-
-class AdminDeleteKeyStates(StatesGroup):
-    waiting_key_id = State()
-
 async def create_vip_link(user_id: int, days: int = 30):
     try:
         invite_link = await bot.create_chat_invite_link(
@@ -124,58 +116,7 @@ async def create_vip_link(user_id: int, days: int = 30):
         return None
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
-    if not MERCHANT_ID or not API_SECRET:
-        return None
-    
-    url = "https://app.platega.io/v2/transaction/process"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "X-MerchantId": MERCHANT_ID,
-        "X-Secret": API_SECRET
-    }
-    
-    data = {
-        "command": "create",
-        "paymentDetails": {
-            "amount": float(amount),
-            "currency": "RUB"
-        },
-        "description": f"Пополнение баланса пользователя {user_id}",
-        "return": f"{RAILWAY_URL}/payment/success",
-        "failedUrl": f"{RAILWAY_URL}/payment/fail",
-        "payload": f"order_{user_id}_{order_id}",
-        "paymentMethod": ["SBP", "CRYPTO"]
-    }
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, headers=headers, json=data) as resp:
-                result = await resp.json()
-                if result.get("url"):
-                    return result.get("url")
-                return None
-        except:
-            return None
-
-async def check_platega_payment(transaction_id: str):
-    if not MERCHANT_ID or not API_SECRET:
-        return None
-    
-    url = f"https://app.platega.io/transaction/{transaction_id}"
-    
-    headers = {
-        "X-MerchantId": MERCHANT_ID,
-        "X-Secret": API_SECRET
-    }
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, headers=headers) as resp:
-                result = await resp.json()
-                return result.get("status")
-        except:
-            return None
+    return None
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -243,12 +184,6 @@ async def start_cmd(message: Message):
             pass
     
     await add_user(message.from_user.id, referrer_id)
-    
-    if referrer_id:
-        config = await get_referral_config()
-        if config["bonus_type"] == "rubles" and config["bonus_value"] > 0:
-            await add_balance(referrer_id, config["bonus_value"])
-            await bot.send_message(referrer_id, f"💰 По вашей реферальной ссылке зарегистрировался новый пользователь! Вы получили {config['bonus_value']} ₽ бонуса!")
     
     text = (
         f"{tg_emoji(STICKERS['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
@@ -323,17 +258,23 @@ async def profile_referral(callback: CallbackQuery):
     user_id = callback.from_user.id
     bot_username = (await bot.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
-    referrals_count = await get_referrals_count(user_id)
+    total_referrals = await get_referrals_count(user_id)
+    paid_referrals = await get_paid_referrals_count(user_id)
     config = await get_referral_config()
+    
+    if config["bonus_type"] == "rubles":
+        bonus_text = f"{config['bonus_value']} ₽"
+    else:
+        bonus_text = f"{config['bonus_value']}% от покупки"
     
     text = (
         f"{tg_emoji(BUTTON_EMOJI['referral'], '👥')} <b>Реферальная система</b>\n\n"
-        f"Приглашайте друзей и получайте бонусы!\n\n"
         f"🔗 <b>Ваша ссылка:</b>\n"
         f"<code>{ref_link}</code>\n\n"
-        f"👥 Приглашено друзей: <code>{referrals_count}</code>\n"
-        f"💰 Бонус за приглашение: <code>{config['bonus_value']} {config['bonus_type']}</code>\n\n"
-        f"💡 Бонус начисляется сразу после регистрации по вашей ссылке!"
+        f"👥 Приглашено друзей: <code>{total_referrals}</code>\n"
+        f"✅ Из них купили: <code>{paid_referrals}</code>\n"
+        f"🎁 <b>Награда за покупку друга:</b> {bonus_text}\n\n"
+        f"💡 Награда начисляется после первой покупки вашего друга!"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
     await callback.answer()
@@ -516,6 +457,33 @@ async def handle_buy(callback: CallbackQuery):
     await mark_key_as_used(key_row["id"])
     await add_purchase(user_id, product_id, product["price"])
     
+    if not await has_user_purchased(user_id):
+        await mark_purchased(user_id)
+        
+        referrer_id = await get_referrer(user_id)
+        if referrer_id:
+            config = await get_referral_config()
+            if config and config["bonus_value"] > 0:
+                if config["bonus_type"] == "rubles":
+                    await add_balance(referrer_id, config["bonus_value"])
+                    await bot.send_message(
+                        referrer_id,
+                        f"🎉 <b>Реферальный бонус!</b>\n\n"
+                        f"Ваш друг @{callback.from_user.username or callback.from_user.first_name} совершил первую покупку!\n"
+                        f"💰 Вы получили: <code>{config['bonus_value']} ₽</code>",
+                        parse_mode="HTML"
+                    )
+                elif config["bonus_type"] == "percent":
+                    bonus_amount = int(product["price"] * config["bonus_value"] / 100)
+                    await add_balance(referrer_id, bonus_amount)
+                    await bot.send_message(
+                        referrer_id,
+                        f"🎉 <b>Реферальный бонус!</b>\n\n"
+                        f"Ваш друг @{callback.from_user.username or callback.from_user.first_name} совершил первую покупку на {product['price']} ₽!\n"
+                        f"💰 Вы получили: <code>{bonus_amount} ₽ ({config['bonus_value']}% от покупки)</code>",
+                        parse_mode="HTML"
+                    )
+    
     from database import pool
     async with pool.acquire() as conn:
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE product_id = $1 AND used = FALSE", product_id)
@@ -652,7 +620,7 @@ async def process_keys_only(message: Message, state: FSMContext):
     await state.clear()
 
 @dp.callback_query(lambda c: c.data == "admin_manage_products")
-async def admin_manage_products(callback: CallbackQuery, state: FSMContext):
+async def admin_manage_products(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔")
         return
@@ -689,7 +657,7 @@ async def delete_product_cmd(message: Message):
         await message.answer("❌ Ошибка при удалении")
 
 @dp.callback_query(lambda c: c.data == "admin_manage_keys")
-async def admin_manage_keys(callback: CallbackQuery, state: FSMContext):
+async def admin_manage_keys(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("⛔")
         return
@@ -1040,12 +1008,13 @@ async def admin_ref_config(callback: CallbackQuery, state: FSMContext):
     
     await state.set_state(AdminRefBonusStates.waiting_type)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Бонус в рублях (₽)", callback_data="ref_type_rubles")],
+        [InlineKeyboardButton(text="Фиксированная сумма (₽)", callback_data="ref_type_rubles")],
+        [InlineKeyboardButton(text="Процент от покупки (%)", callback_data="ref_type_percent")],
         [InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]
     ])
     await callback.message.edit_text(
         "🎁 <b>Настройка реферального бонуса</b>\n\n"
-        "Выберите тип бонуса за приглашение друга:",
+        "Выберите тип бонуса за первую покупку приглашённого друга:",
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -1060,10 +1029,17 @@ async def ref_type_callback(callback: CallbackQuery, state: FSMContext):
     bonus_type = callback.data.split("_")[2]
     await state.update_data(bonus_type=bonus_type)
     await state.set_state(AdminRefBonusStates.waiting_value)
-    await callback.message.edit_text(
-        "💰 Введите сумму бонуса в рублях:\n\nПример: <code>50</code>",
-        parse_mode="HTML"
-    )
+    
+    if bonus_type == "rubles":
+        await callback.message.edit_text(
+            "💰 Введите фиксированную сумму бонуса в рублях:\n\nПример: <code>50</code>",
+            parse_mode="HTML"
+        )
+    else:
+        await callback.message.edit_text(
+            "📊 Введите процент от покупки (число от 1 до 100):\n\nПример: <code>10</code>",
+            parse_mode="HTML"
+        )
     await callback.answer()
 
 @dp.message(AdminRefBonusStates.waiting_value)
@@ -1081,10 +1057,11 @@ async def ref_value_callback(message: Message, state: FSMContext):
         
         await update_referral_config(bonus_type, value)
         
+        bonus_text = f"{value} ₽" if bonus_type == "rubles" else f"{value}% от покупки"
+        
         await message.answer(
             f"✅ <b>Настройки реферальной системы обновлены!</b>\n\n"
-            f"🎁 Тип бонуса: {bonus_type}\n"
-            f"💰 Сумма: {value}",
+            f"🎁 Тип бонуса: {bonus_text}",
             parse_mode="HTML",
             reply_markup=get_admin_keyboard()
         )
@@ -1122,34 +1099,7 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
 
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
-    data = request.json
-    status = data.get("status")
-    payload = data.get("payload")
-    
-    if status == "CONFIRMED" and payload:
-        parts = payload.split("_")
-        if len(parts) >= 3 and parts[0] == "order":
-            user_id = int(parts[1])
-            order_id = parts[2]
-            
-            for uid, info in pending_payments.items():
-                if uid == user_id and info["order_id"] == order_id:
-                    amount = info["amount"]
-                    
-                    async def update_balance():
-                        current = await get_balance(user_id)
-                        await update_user_balance(user_id, current + amount)
-                        await bot.send_message(
-                            user_id,
-                            f"✅ <b>Баланс пополнен!</b>\n\nСумма: <code>{amount} ₽</code>\nНовый баланс: <code>{current + amount} ₽</code>",
-                            parse_mode="HTML"
-                        )
-                        del pending_payments[user_id]
-                    
-                    asyncio.run(update_balance())
-                    return jsonify({"status": "ok"}), 200
-    
-    return jsonify({"status": "error"}), 400
+    return jsonify({"status": "ok"}), 200
 
 @flask_app.route("/payment/success", methods=["GET"])
 def payment_success():
