@@ -221,7 +221,7 @@ async def handle_platega_payment(callback: types.CallbackQuery):
     }
     
     # ЗАМЕНИ НА РЕАЛЬНЫЙ API PLATEGA
-    payment_url = f"https://platega.com/pay?amount={amount}&payment_id={payment_id}&user_id={user_id}"
+    payment_url = f""
     
     await callback.message.edit_text(
         f"💳 *Оплата через Platega*\n\n"
