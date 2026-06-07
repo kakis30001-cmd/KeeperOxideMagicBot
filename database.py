@@ -1,7 +1,5 @@
 import asyncpg
-import os
-
-DB_URL = os.getenv("DB_URL")
+from config import DB_URL
 
 pool = None
 
@@ -76,10 +74,7 @@ async def connect_db():
 
 async def add_user(user_id: int):
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING",
-            user_id
-        )
+        await conn.execute("INSERT INTO users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING", user_id)
 
 async def get_balance(user_id: int) -> int:
     async with pool.acquire() as conn:
@@ -93,10 +88,6 @@ async def update_user_balance(user_id: int, new_balance: int):
 async def get_all_products():
     async with pool.acquire() as conn:
         return await conn.fetch("SELECT id, name, price FROM products ORDER BY id")
-
-async def get_product_by_id(product_id: int):
-    async with pool.acquire() as conn:
-        return await conn.fetchrow("SELECT id, name, price FROM products WHERE id = $1", product_id)
 
 async def add_product(name: str, price: int) -> int:
     async with pool.acquire() as conn:
@@ -138,29 +129,7 @@ async def get_stats():
         keys_sold = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE used = TRUE")
         products_count = await conn.fetchval("SELECT COUNT(*) FROM products")
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE used = FALSE")
-        return {
-            "users": users,
-            "total_sales": total_sales,
-            "keys_sold": keys_sold,
-            "products_count": products_count,
-            "keys_left": keys_left
-        }
-
-async def get_all_keys(product_id: int = None):
-    async with pool.acquire() as conn:
-        if product_id:
-            return await conn.fetch("SELECT id, key_value, used FROM keys_store WHERE product_id = $1 ORDER BY id", product_id)
-        else:
-            return await conn.fetch("""
-                SELECT ks.id, ks.key_value, ks.used, p.name as product_name 
-                FROM keys_store ks
-                JOIN products p ON ks.product_id = p.id
-                ORDER BY ks.id
-            """)
-
-async def delete_product(product_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute("DELETE FROM products WHERE id = $1", product_id)
+        return {"users": users, "total_sales": total_sales, "keys_sold": keys_sold, "products_count": products_count, "keys_left": keys_left}
 
 async def get_all_users():
     async with pool.acquire() as conn:
@@ -168,17 +137,11 @@ async def get_all_users():
 
 async def create_promocode(code: str, discount_type: str, discount_value: int, max_uses: int):
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO promocodes (code, discount_type, discount_value, max_uses) VALUES ($1, $2, $3, $4)",
-            code, discount_type, discount_value, max_uses
-        )
+        await conn.execute("INSERT INTO promocodes (code, discount_type, discount_value, max_uses) VALUES ($1, $2, $3, $4)", code, discount_type, discount_value, max_uses)
 
 async def get_promocode(code: str):
     async with pool.acquire() as conn:
-        return await conn.fetchrow(
-            "SELECT * FROM promocodes WHERE code = $1 AND is_active = TRUE AND used_count < max_uses",
-            code
-        )
+        return await conn.fetchrow("SELECT * FROM promocodes WHERE code = $1 AND is_active = TRUE AND used_count < max_uses", code)
 
 async def use_promocode(user_id: int, promocode_id: int):
     async with pool.acquire() as conn:
