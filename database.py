@@ -47,6 +47,27 @@ async def connect_db():
         )
         """)
 
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS promocodes(
+            id SERIAL PRIMARY KEY,
+            code TEXT UNIQUE NOT NULL,
+            discount_type TEXT NOT NULL,
+            discount_value INTEGER NOT NULL,
+            max_uses INTEGER NOT NULL,
+            used_count INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE
+        )
+        """)
+
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS promocode_uses(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            promocode_id INTEGER REFERENCES promocodes(id) ON DELETE CASCADE,
+            used_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+
 async def add_user(user_id: int):
     async with pool.acquire() as conn:
         await conn.execute(
