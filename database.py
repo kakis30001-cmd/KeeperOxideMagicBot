@@ -1,4 +1,85 @@
-# Добавь в конец database.py
+import asyncpg
+from config import DB_URL
+
+pool = None
+
+async def connect_db():
+    global pool
+
+    pool = await asyncpg.create_pool(
+        DB_URL,
+        min_size=1,
+        max_size=5
+    )
+
+    async with pool.acquire() as conn:
+        # Таблица users
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            user_id BIGINT PRIMARY KEY,
+            balance INTEGER DEFAULT 0
+        )
+        """)
+
+        # Таблица products
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS products(
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            price INTEGER NOT NULL
+        )
+        """)
+
+        # Таблица keys_store
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS keys_store(
+            id SERIAL PRIMARY KEY,
+            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+            key_value TEXT NOT NULL,
+            used BOOLEAN DEFAULT FALSE
+        )
+        """)
+
+        # Таблица purchases (история покупок)
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS purchases(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+            price INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+
+async def add_user(user_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING",
+            user_id
+        )
+
+async def get_balance(user_id: int) -> int:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT balance FROM users WHERE user_id = $1",
+            user_id
+        )
+        return row["balance"] if row else 0
+
+async def update_user_balance(user_id: int, new_balance: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET balance = $1 WHERE user_id = $2",
+            new_balance, user_id
+        )
+
+async def get_all_products():
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT id, name, price FROM products ORDER BY id")
+
+async def get_product_by_id(product_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT id, name, price FROM products WHERE id = $1", product_id)
 
 async def add_product(name: str, price: int) -> int:
     """Добавляет товар и возвращает его ID"""
@@ -19,17 +100,80 @@ async def add_keys_to_product(product_id: int, keys_list: list):
                     product_id, key.strip()
                 )
 
+async def get_unused_key(product_id: int):
+    """Получает один неиспользованный ключ для товара"""
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            "SELECT id, key_value FROM keys_store WHERE product_id = $1 AND used = FALSE LIMIT 1",
+            product_id
+        )
+
+async def mark_key_as_used(key_id: int):
+    """Отмечает ключ как использованный"""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE keys_store SET used = TRUE WHERE id = $1",
+            key_id
+        )
+
+async def add_purchase(user_id: int, product_id: int, price: int):
+    """Добавляет запись о покупке в историю"""
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO purchases (user_id, product_id, price) VALUES ($1, $2, $3)",
+            user_id, product_id, price
+        )
+
+async def get_user_purchases(user_id: int):
+    """Получает историю покупок пользователя"""
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            """
+            SELECT p.id, pr.name, p.price, p.created_at 
+            FROM purchases p
+            JOIN products pr ON p.product_id = pr.id
+            WHERE p.user_id = $1
+            ORDER BY p.created_at DESC
+            """,
+            user_id
+        )
+
 async def get_stats():
-    """Возвращает статистику"""
+    """Возвращает статистику для админа"""
     async with pool.acquire() as conn:
         users = await conn.fetchval("SELECT COUNT(*) FROM users")
         total_sales = await conn.fetchval("SELECT COALESCE(SUM(price), 0) FROM purchases")
         keys_sold = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE used = TRUE")
         products_count = await conn.fetchval("SELECT COUNT(*) FROM products")
+        keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE used = FALSE")
         
         return {
             "users": users,
             "total_sales": total_sales,
             "keys_sold": keys_sold,
-            "products_count": products_count
+            "products_count": products_count,
+            "keys_left": keys_left
         }
+
+async def get_all_keys(product_id: int = None):
+    """Получает все ключи (для админа), опционально по товару"""
+    async with pool.acquire() as conn:
+        if product_id:
+            return await conn.fetch(
+                "SELECT id, key_value, used FROM keys_store WHERE product_id = $1 ORDER BY id",
+                product_id
+            )
+        else:
+            return await conn.fetch(
+                """
+                SELECT ks.id, ks.key_value, ks.used, p.name as product_name 
+                FROM keys_store ks
+                JOIN products p ON ks.product_id = p.id
+                ORDER BY ks.id
+                """
+            )
+
+async def delete_product(product_id: int):
+    """Удаляет товар и все связанные ключи (CASCADE сделает это автоматически)"""
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM products WHERE id = $1", product_id)
