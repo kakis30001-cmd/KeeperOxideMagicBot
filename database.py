@@ -12,7 +12,8 @@ async def connect_db():
         CREATE TABLE IF NOT EXISTS users(
             user_id BIGINT PRIMARY KEY,
             balance INTEGER DEFAULT 0,
-            referrer_id BIGINT DEFAULT NULL
+            referrer_id BIGINT DEFAULT NULL,
+            has_purchased BOOLEAN DEFAULT FALSE
         )
         """)
         
@@ -90,6 +91,18 @@ async def get_referrer(user_id: int):
 async def get_referrals_count(user_id: int) -> int:
     async with pool.acquire() as conn:
         return await conn.fetchval("SELECT COUNT(*) FROM users WHERE referrer_id = $1", user_id) or 0
+
+async def get_paid_referrals_count(user_id: int) -> int:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM users WHERE referrer_id = $1 AND has_purchased = TRUE", user_id) or 0
+
+async def mark_purchased(user_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE users SET has_purchased = TRUE WHERE user_id = $1", user_id)
+
+async def has_user_purchased(user_id: int) -> bool:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT has_purchased FROM users WHERE user_id = $1", user_id) or False
 
 async def get_referral_config():
     async with pool.acquire() as conn:
