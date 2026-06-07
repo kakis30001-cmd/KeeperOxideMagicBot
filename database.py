@@ -12,8 +12,7 @@ async def connect_db():
         CREATE TABLE IF NOT EXISTS users(
             user_id BIGINT PRIMARY KEY,
             balance INTEGER DEFAULT 0,
-            referrer_id BIGINT DEFAULT NULL,
-            ref_bonus_claimed BOOLEAN DEFAULT FALSE
+            referrer_id BIGINT DEFAULT NULL
         )
         """)
         
@@ -98,13 +97,9 @@ async def get_referrer(user_id: int):
     async with pool.acquire() as conn:
         return await conn.fetchval("SELECT referrer_id FROM users WHERE user_id = $1", user_id)
 
-async def claim_ref_bonus(user_id: int):
+async def get_referrals_count(user_id: int) -> int:
     async with pool.acquire() as conn:
-        await conn.execute("UPDATE users SET ref_bonus_claimed = TRUE WHERE user_id = $1", user_id)
-
-async def is_ref_bonus_claimed(user_id: int) -> bool:
-    async with pool.acquire() as conn:
-        return await conn.fetchval("SELECT ref_bonus_claimed FROM users WHERE user_id = $1", user_id) or False
+        return await conn.fetchval("SELECT COUNT(*) FROM users WHERE referrer_id = $1", user_id) or 0
 
 async def get_referral_config():
     async with pool.acquire() as conn:
@@ -113,10 +108,6 @@ async def get_referral_config():
 async def update_referral_config(bonus_type: str, bonus_value: int):
     async with pool.acquire() as conn:
         await conn.execute("UPDATE referral_config SET bonus_type = $1, bonus_value = $2", bonus_type, bonus_value)
-
-async def get_referrals_count(user_id: int) -> int:
-    async with pool.acquire() as conn:
-        return await conn.fetchval("SELECT COUNT(*) FROM users WHERE referrer_id = $1", user_id) or 0
 
 async def get_balance(user_id: int) -> int:
     async with pool.acquire() as conn:
@@ -218,6 +209,10 @@ async def get_and_use_vip_link(user_id: int):
             await conn.execute("UPDATE vip_links SET used = TRUE WHERE id = $1", row["id"])
             return row["link"]
         return None
+
+async def get_all_vip_links():
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT * FROM vip_links ORDER BY created_at DESC")
 
 async def deactivate_vip_link(link_id: int):
     async with pool.acquire() as conn:
