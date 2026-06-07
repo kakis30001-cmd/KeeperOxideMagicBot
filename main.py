@@ -48,11 +48,11 @@ flask_app = Flask(__name__)
 
 pending_payments = {}
 
-# ========== КЛАВИАТУРЫ ==========
+# ========== КЛАВИАТУРЫ С ЭМОДЗИ В КНОПКАХ ==========
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="🛍 Магазин"), KeyboardButton(text="👤 Профиль")],
-        [KeyboardButton(text="ℹ Информация")]
+        [KeyboardButton(text="🛍️ Магазин"), KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="ℹ️ Информация")]
     ],
     resize_keyboard=True
 )
@@ -98,13 +98,13 @@ async def start_cmd(message: Message):
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
-@dp.message(lambda m: m.text and "Главная" in m.text)
+@dp.message(lambda m: m.text == "🏠 Главная")
 async def back_to_main(message: Message):
     text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>"
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
 # ========== ИНФОРМАЦИЯ ==========
-@dp.message(lambda m: m.text and "Информация" in m.text)
+@dp.message(lambda m: m.text == "ℹ️ Информация")
 async def info_cmd(message: Message):
     info_text = (
         f"{tg_emoji(STICKERS['info_title'], 'ℹ')} <b>ИНФОРМАЦИЯ</b> {tg_emoji(STICKERS['info_title'], 'ℹ')}\n\n"
@@ -124,7 +124,7 @@ async def info_cmd(message: Message):
     await message.answer(info_text, parse_mode="HTML", disable_web_page_preview=True)
 
 # ========== МАГАЗИН ==========
-@dp.message(lambda m: m.text and "Магазин" in m.text)
+@dp.message(lambda m: m.text == "🛍️ Магазин")
 async def shop_cmd(message: Message):
     products = await get_all_products()
     if not products:
@@ -146,7 +146,7 @@ async def shop_cmd(message: Message):
     )
 
 # ========== ПРОФИЛЬ ==========
-@dp.message(lambda m: m.text and "Профиль" in m.text)
+@dp.message(lambda m: m.text == "👤 Профиль")
 async def profile_cmd(message: Message):
     balance = await get_balance(message.from_user.id)
     text = (
@@ -157,7 +157,7 @@ async def profile_cmd(message: Message):
     await message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
 
 # ========== ИСТОРИЯ ЗАКАЗОВ ==========
-@dp.message(lambda m: m.text and "История заказов" in m.text)
+@dp.message(lambda m: m.text == "📋 История заказов")
 async def orders_history(message: Message):
     purchases = await get_user_purchases(message.from_user.id)
     
@@ -179,7 +179,7 @@ async def orders_history(message: Message):
     await message.answer(history_text, parse_mode="HTML")
 
 # ========== ПОПОЛНЕНИЕ БАЛАНСА ==========
-@dp.message(lambda m: m.text and "Пополнить баланс" in m.text)
+@dp.message(lambda m: m.text == "💰 Пополнить баланс")
 async def deposit_cmd(message: Message, state: FSMContext):
     await state.set_state(DepositStates.waiting_amount)
     await message.answer(
