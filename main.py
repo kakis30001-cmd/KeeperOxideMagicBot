@@ -40,7 +40,8 @@ STICKERS = {
 }
 
 def tg_emoji(sticker_id: str, fallback: str = "•") -> str:
-    return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+    """Правильный HTML-тег для анимированного эмодзи (с обязательным символом перед тегом)"""
+    return f'⁉️<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
 # ========== ИНИЦИАЛИЗАЦИЯ ==========
 bot = Bot(token=BOT_TOKEN)
@@ -52,15 +53,15 @@ pending_payments = {}
 # ========== КЛАВИАТУРЫ ==========
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text=f"{tg_emoji(STICKERS['shop_title'], '🛍')} Магазин"), KeyboardButton(text=f"{tg_emoji(STICKERS['profile'], '👤')} Профиль")],
-        [KeyboardButton(text=f"{tg_emoji(STICKERS['info_title'], 'ℹ')} Информация")]
+        [KeyboardButton(text=f"🛍 Магазин"), KeyboardButton(text=f"👤 Профиль")],
+        [KeyboardButton(text=f"ℹ Информация")]
     ],
     resize_keyboard=True
 )
 
 profile_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text=f"{tg_emoji(STICKERS['balance_icon'], '💰')} Пополнить баланс"), KeyboardButton(text=f"{tg_emoji(STICKERS['product_selected'], '📋')} История заказов")],
+        [KeyboardButton(text=f"💰 Пополнить баланс"), KeyboardButton(text=f"📋 История заказов")],
         [KeyboardButton(text="🏠 Главная")]
     ],
     resize_keyboard=True
@@ -136,7 +137,7 @@ async def shop_cmd(message: Message):
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{tg_emoji(STICKERS['product_selected'], '🎮')} {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
+        [InlineKeyboardButton(text=f"🎮 {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
         for p in products
     ])
     
@@ -172,8 +173,8 @@ async def orders_history(message: Message):
     history_text = f"{tg_emoji(STICKERS['product_selected'], '🎉')} <b>История заказов</b>\n\n"
     for p in purchases[:10]:
         history_text += f"🆔 Заказ #{p['id']}\n"
-        history_text += f"{tg_emoji(STICKERS['magic'], '🎮')} Товар: {p['name']}\n"
-        history_text += f"{tg_emoji(STICKERS['price_icon'], '💰')} Цена: {p['price']} ₽\n"
+        history_text += f"🎮 Товар: {p['name']}\n"
+        history_text += f"💰 Цена: {p['price']} ₽\n"
         history_text += f"📅 Дата: {p['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
         history_text += "─" * 15 + "\n"
     
@@ -203,7 +204,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         
         payment_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"{tg_emoji(STICKERS['payment_method'], '💳')} СБП / Криптовалюта (Platega)", callback_data=f"payment_platega_{amount}")],
+            [InlineKeyboardButton(text=f"💳 СБП / Криптовалюта (Platega)", callback_data=f"payment_platega_{amount}")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_payment")]
         ])
         
