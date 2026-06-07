@@ -11,19 +11,10 @@ async def connect_db():
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users(
             user_id BIGINT PRIMARY KEY,
-            balance INTEGER DEFAULT 0
+            balance INTEGER DEFAULT 0,
+            referrer_id BIGINT DEFAULT NULL
         )
         """)
-        
-        try:
-            await conn.execute("ALTER TABLE users ADD COLUMN referrer_id BIGINT DEFAULT NULL")
-        except Exception:
-            pass
-        
-        try:
-            await conn.execute("ALTER TABLE users ADD COLUMN ref_bonus_claimed BOOLEAN DEFAULT FALSE")
-        except Exception:
-            pass
         
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS products(
@@ -70,16 +61,6 @@ async def connect_db():
             user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
             promocode_id INTEGER REFERENCES promocodes(id) ON DELETE CASCADE,
             used_at TIMESTAMP DEFAULT NOW()
-        )
-        """)
-
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS vip_links(
-            id SERIAL PRIMARY KEY,
-            link TEXT NOT NULL,
-            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
-            created_at TIMESTAMP DEFAULT NOW(),
-            used BOOLEAN DEFAULT FALSE
         )
         """)
 
@@ -206,23 +187,3 @@ async def get_all_promocodes():
 async def delete_promocode(promocode_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
-
-async def add_vip_link(link: str, user_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO vip_links (link, user_id) VALUES ($1, $2)", link, user_id)
-
-async def get_and_use_vip_link(user_id: int):
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT id, link FROM vip_links WHERE user_id = $1 AND used = FALSE LIMIT 1", user_id)
-        if row:
-            await conn.execute("UPDATE vip_links SET used = TRUE WHERE id = $1", row["id"])
-            return row["link"]
-        return None
-
-async def get_all_vip_links():
-    async with pool.acquire() as conn:
-        return await conn.fetch("SELECT * FROM vip_links ORDER BY created_at DESC")
-
-async def deactivate_vip_link(link_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute("UPDATE vip_links SET used = TRUE WHERE id = $1", link_id)
