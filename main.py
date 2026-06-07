@@ -19,7 +19,7 @@ from database import (
 
 # ========== ID АНИМИРОВАННЫХ ПРЕМИУМ ЭМОДЗИ ==========
 # ЗАМЕНИ НА СВОИ РЕАЛЬНЫЕ ID (получи через @getidsbot)
-EMOJI = {
+EMOJI_IDS = {
     "fire": "5370680183571357151",
     "sparkles": "5370680183571357152",
     "diamond": "5370680183571357153",
@@ -43,9 +43,9 @@ EMOJI = {
     "home": "5370680183571357171",
 }
 
-def emoji_html(emoji_id: str, fallback: str = "•") -> str:
-    """Возвращает HTML-тег для анимированного эмодзи"""
-    return f'<emoji document_id="{emoji_id}">{fallback}</emoji>'
+def tg_emoji(emoji_id: str, fallback: str = "•") -> str:
+    """Правильный HTML-тег для анимированных эмодзи"""
+    return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
 
 # ========== ИНИЦИАЛИЗАЦИЯ ==========
 bot = Bot(token=BOT_TOKEN)
@@ -54,32 +54,32 @@ flask_app = Flask(__name__)
 
 pending_payments = {}
 
-# ========== КЛАВИАТУРЫ С АНИМИРОВАННЫМИ ЭМОДЗИ ==========
+# ========== КЛАВИАТУРЫ ==========
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text=f"{emoji_html(EMOJI['shop'], '🛍')} Магазин"), KeyboardButton(text=f"{emoji_html(EMOJI['profile'], '👤')} Профиль")],
-        [KeyboardButton(text=f"{emoji_html(EMOJI['info'], 'ℹ')} Информация")]
+        [KeyboardButton(text="🛍 Магазин"), KeyboardButton(text="👤 Профиль")],
+        [KeyboardButton(text="ℹ Информация")]
     ],
     resize_keyboard=True
 )
 
 profile_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text=f"{emoji_html(EMOJI['money'], '💰')} Пополнить баланс"), KeyboardButton(text=f"{emoji_html(EMOJI['party'], '🎉')} История заказов")],
-        [KeyboardButton(text=f"{emoji_html(EMOJI['home'], '🏠')} Главная")]
+        [KeyboardButton(text="💰 Пополнить"), KeyboardButton(text="📋 История")],
+        [KeyboardButton(text="🏠 Главная")]
     ],
     resize_keyboard=True
 )
 
 admin_menu = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="➕ Добавить товар"), KeyboardButton(text="🔑 Добавить ключи")],
+        [KeyboardButton(text="➕ Товар"), KeyboardButton(text="🔑 Ключи")],
         [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🏠 Главная")]
     ],
     resize_keyboard=True
 )
 
-# ========== FSM СОСТОЯНИЯ ==========
+# ========== FSM ==========
 class AddProductStates(StatesGroup):
     waiting_name = State()
     waiting_price = State()
@@ -92,39 +92,42 @@ class AddKeysStates(StatesGroup):
 class DepositStates(StatesGroup):
     waiting_amount = State()
 
-# ========== КОМАНДЫ БОТА ==========
+# ========== КОМАНДЫ ==========
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
     await add_user(message.from_user.id)
     
+    sparkles = tg_emoji(EMOJI_IDS["sparkles"], "✨")
+    magic = tg_emoji(EMOJI_IDS["magic"], "✨")
+    
     text = (
-        f"{emoji_html(EMOJI['magic'], '✨')}{emoji_html(EMOJI['sparkles'], '✨')}{emoji_html(EMOJI['magic'], '✨')} "
-        f"<b>Добро пожаловать в IceBerg Magic Cheat Shop</b> "
-        f"{emoji_html(EMOJI['magic'], '✨')}{emoji_html(EMOJI['sparkles'], '✨')}{emoji_html(EMOJI['magic'], '✨')}\n\n"
-        f"Для покупки товаров используйте кнопки ниже ↓"
+        f"{magic}{sparkles}{magic} "
+        f"<b>Добро пожаловать в Magic Shop</b> "
+        f"{magic}{sparkles}{magic}\n\n"
+        f"Нажми <b>Магазин</b> для покупки ключей"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
 @dp.message(lambda m: m.text and "Главная" in m.text)
 async def back_to_main(message: Message):
-    text = f"{emoji_html(EMOJI['sparkles'], '✨')} <b>Главное меню</b> {emoji_html(EMOJI['sparkles'], '✨')}\n\nВыберите действие:"
+    sparkles = tg_emoji(EMOJI_IDS["sparkles"], "✨")
+    text = f"{sparkles} <b>Главное меню</b>"
     await message.answer(text, parse_mode="HTML", reply_markup=main_menu)
 
 # ========== ИНФОРМАЦИЯ ==========
 @dp.message(lambda m: m.text and "Информация" in m.text)
 async def info_cmd(message: Message):
     info_text = (
-        f"{emoji_html(EMOJI['info'], 'ℹ️')} <b>ИНФОРМАЦИЯ</b> {emoji_html(EMOJI['info'], 'ℹ️')}\n\n"
-        f"{emoji_html(EMOJI['magic'], '✨')} <b>Официальный бот по продаже ключей для чит клиента Magic</b>\n\n"
-        f"{emoji_html(EMOJI['payment'], '💳')} <b>Оплата:</b> Platega (СБП, Криптовалюта)\n\n"
+        f"ℹ <b>ИНФОРМАЦИЯ</b> ℹ\n\n"
+        f"✨ <b>Официальный бот по продаже ключей для Magic</b>\n\n"
+        f"💳 <b>Оплата:</b> Platega (СБП, Криптовалюта)\n\n"
         f"<b>📌 Как пользоваться:</b>\n"
-        f"• Приобретите ключ через меню\n"
-        f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
-        f"{emoji_html(EMOJI['support'], '📞')} <b>КОНТАКТЫ:</b>\n"
+        f"• Приобретите ключ через меню\n\n"
+        f"📞 <b>КОНТАКТЫ:</b>\n"
         f"• Техподдержка: @nikita1055\n"
-        f"• Основной канал: @keepersell\n"
+        f"• Канал: @keepersell\n"
         f"• Отзывы: https://t.me/KeeperOtzivi\n\n"
-        f"{emoji_html(EMOJI['rules'], '⚖️')} <b>ДОКУМЕНТЫ:</b>\n"
+        f"⚖ <b>ДОКУМЕНТЫ:</b>\n"
         f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
     )
@@ -135,19 +138,16 @@ async def info_cmd(message: Message):
 async def shop_cmd(message: Message):
     products = await get_all_products()
     if not products:
-        await message.answer(
-            f"{emoji_html(EMOJI['error'], '📭')} <b>Товаров пока нет</b>\n\nОжидайте пополнения ассортимента.",
-            parse_mode="HTML"
-        )
+        await message.answer("📭 <b>Товаров пока нет</b>", parse_mode="HTML")
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{emoji_html(EMOJI['key'], '🎮')} {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
+        [InlineKeyboardButton(text=f"🔑 {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
         for p in products
     ])
     
     await message.answer(
-        f"{emoji_html(EMOJI['shop'], '🛍️')} <b>Выберите нужный товар</b>\n\nНажмите на кнопку с товаром для покупки:",
+        f"🛍 <b>Выберите товар</b>",
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -156,44 +156,37 @@ async def shop_cmd(message: Message):
 @dp.message(lambda m: m.text and "Профиль" in m.text)
 async def profile_cmd(message: Message):
     balance = await get_balance(message.from_user.id)
+    money = tg_emoji(EMOJI_IDS["money"], "💰")
     text = (
-        f"{emoji_html(EMOJI['profile'], '👤')} <b>Профиль</b>\n\n"
-        f"📛 Имя: {message.from_user.full_name}\n"
-        f"🆔 ID: <code>{message.from_user.id}</code>\n"
-        f"{emoji_html(EMOJI['money'], '💰')} Ваш баланс: <code>{balance} ₽</code>\n\n"
-        f"Выберите действие в меню ниже:"
+        f"👤 <b>Профиль</b>\n\n"
+        f"Имя: {message.from_user.full_name}\n"
+        f"ID: <code>{message.from_user.id}</code>\n"
+        f"{money} Баланс: <code>{balance} ₽</code>"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
 
-@dp.message(lambda m: m.text and "История заказов" in m.text)
+# ========== ИСТОРИЯ ==========
+@dp.message(lambda m: m.text and "История" in m.text)
 async def orders_history(message: Message):
     purchases = await get_user_purchases(message.from_user.id)
-    
     if not purchases:
-        await message.answer(
-            f"{emoji_html(EMOJI['error'], '📋')} <b>История заказов</b>\n\nУ вас пока нет покупок.",
-            parse_mode="HTML"
-        )
+        await message.answer("📋 <b>История пуста</b>", parse_mode="HTML")
         return
     
-    history_text = f"{emoji_html(EMOJI['party'], '🎉')} <b>История заказов</b>\n\n"
-    for p in purchases:
-        history_text += f"🆔 Заказ #{p['id']}\n"
-        history_text += f"{emoji_html(EMOJI['key'], '🎮')} Товар: {p['name']}\n"
-        history_text += f"{emoji_html(EMOJI['money'], '💰')} Цена: {p['price']} ₽\n"
-        history_text += f"📅 Дата: {p['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
-        history_text += "─" * 15 + "\n"
-    
-    await message.answer(history_text, parse_mode="HTML")
+    party = tg_emoji(EMOJI_IDS["party"], "🎉")
+    text = f"{party} <b>История заказов</b>\n\n"
+    for p in purchases[:10]:
+        text += f"#{p['id']} | {p['name']} | {p['price']}₽ | {p['created_at'].strftime('%d.%m.%y')}\n"
+    await message.answer(text, parse_mode="HTML")
 
-# ========== ПОПОЛНЕНИЕ БАЛАНСА ==========
-@dp.message(lambda m: m.text and "Пополнить баланс" in m.text)
+# ========== ПОПОЛНЕНИЕ ==========
+@dp.message(lambda m: m.text and "Пополнить" in m.text)
 async def deposit_cmd(message: Message, state: FSMContext):
     await state.set_state(DepositStates.waiting_amount)
+    money = tg_emoji(EMOJI_IDS["money"], "💰")
     await message.answer(
-        f"{emoji_html(EMOJI['money'], '💰')} <b>Пополнение баланса</b>\n\n"
-        f"Введите сумму пополнения (от 10 до 50000 ₽):\n\n"
-        f"Пример: <code>500</code>",
+        f"{money} <b>Сумма пополнения:</b>\n\n"
+        f"Введите число от 10 до 50000\nПример: <code>500</code>",
         parse_mode="HTML"
     )
 
@@ -201,82 +194,54 @@ async def deposit_cmd(message: Message, state: FSMContext):
 async def process_deposit_amount(message: Message, state: FSMContext):
     try:
         amount = int(message.text.strip())
-        if amount < 10:
-            await message.answer(
-                f"{emoji_html(EMOJI['error'], '❌')} Минимальная сумма пополнения: <b>10 ₽</b>\n\nВведите другую сумму:",
-                parse_mode="HTML"
-            )
-            return
-        if amount > 50000:
-            await message.answer(
-                f"{emoji_html(EMOJI['error'], '❌')} Максимальная сумма пополнения: <b>50000 ₽</b>\n\nВведите другую сумму:",
-                parse_mode="HTML"
-            )
+        if amount < 10 or amount > 50000:
+            error = tg_emoji(EMOJI_IDS["error"], "❌")
+            await message.answer(f"{error} Сумма от 10 до 50000", parse_mode="HTML")
             return
         
         await state.update_data(amount=amount)
-        
         payment_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"{emoji_html(EMOJI['payment'], '💳')} СБП / Криптовалюта (Platega)", callback_data=f"payment_platega_{amount}")],
-            [InlineKeyboardButton(text=f"{emoji_html(EMOJI['error'], '❌')} Отмена", callback_data="cancel_payment")]
+            [InlineKeyboardButton(text="💳 Platega (СБП/Крипта)", callback_data=f"pay_{amount}")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_pay")]
         ])
-        
+        money = tg_emoji(EMOJI_IDS["money"], "💰")
         await message.answer(
-            f"{emoji_html(EMOJI['money'], '💰')} <b>Пополнение на {amount} ₽</b>\n\nВыберите способ оплаты:",
+            f"{money} <b>Пополнение {amount}₽</b>\nВыбери способ:",
             parse_mode="HTML",
             reply_markup=payment_kb
         )
         await state.clear()
-        
     except ValueError:
-        await message.answer(
-            f"{emoji_html(EMOJI['error'], '❌')} Введите <b>число</b>!\n\nПример: <code>500</code>",
-            parse_mode="HTML"
-        )
+        error = tg_emoji(EMOJI_IDS["error"], "❌")
+        await message.answer(f"{error} Введи число", parse_mode="HTML")
 
-@dp.callback_query(lambda c: c.data == "cancel_payment")
-async def cancel_payment(callback: types.CallbackQuery):
+@dp.callback_query(lambda c: c.data == "cancel_pay")
+async def cancel_pay(callback: types.CallbackQuery):
     await callback.message.delete()
-    balance = await get_balance(callback.from_user.id)
-    text = (
-        f"{emoji_html(EMOJI['profile'], '👤')} <b>Профиль</b>\n\n"
-        f"📛 Имя: {callback.from_user.full_name}\n"
-        f"🆔 ID: <code>{callback.from_user.id}</code>\n"
-        f"{emoji_html(EMOJI['money'], '💰')} Ваш баланс: <code>{balance} ₽</code>\n\n"
-        f"Выберите действие в меню ниже:"
-    )
-    await callback.message.answer(text, parse_mode="HTML", reply_markup=profile_menu)
-    await callback.answer()
+    await callback.answer("Отменено")
 
-# ========== ОПЛАТА PLATEGA ==========
-@dp.callback_query(lambda c: c.data and c.data.startswith("payment_platega_"))
-async def handle_platega_payment(callback: types.CallbackQuery):
-    amount = int(callback.data.split("_")[2])
+@dp.callback_query(lambda c: c.data and c.data.startswith("pay_"))
+async def handle_pay(callback: types.CallbackQuery):
+    amount = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
-    
     payment_id = str(uuid.uuid4())
-    pending_payments[user_id] = {
-        "amount": amount,
-        "payment_id": payment_id,
-        "status": "pending"
-    }
+    pending_payments[user_id] = {"amount": amount, "payment_id": payment_id}
     
-    # ЗАМЕНИ НА РЕАЛЬНЫЙ API PLATEGA
-    payment_url = f"https://platega.com/pay?amount={amount}&payment_id={payment_id}&user_id={user_id}"
+    # ЗАМЕНИ НА РЕАЛЬНУЮ ССЫЛКУ PLATEGA
+    url = f"https://platega.com/pay?amount={amount}&user_id={user_id}&payment_id={payment_id}"
+    sparkles = tg_emoji(EMOJI_IDS["sparkles"], "⚡")
     
     await callback.message.edit_text(
-        f"{emoji_html(EMOJI['payment'], '💳')} <b>Оплата через Platega</b>\n\n"
-        f"Сумма: <code>{amount} ₽</code>\n\n"
-        f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
-        f"{emoji_html(EMOJI['sparkles'], '⚡')} После оплаты баланс пополнится автоматически.\n\n"
-        f"🆔 ID платежа: <code>{payment_id}</code>\n\n"
-        f"Способы оплаты: СБП, Криптовалюта",
+        f"💳 <b>Оплата {amount}₽</b>\n\n"
+        f"🔗 <a href='{url}'>Нажми для оплаты</a>\n\n"
+        f"ID: <code>{payment_id}</code>\n\n"
+        f"{sparkles} После оплаты баланс пополнится автоматически",
         parse_mode="HTML",
         disable_web_page_preview=True
     )
     await callback.answer()
 
-# ========== ПОКУПКИ ==========
+# ========== ПОКУПКА ==========
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: types.CallbackQuery):
     product_id = int(callback.data.split("_")[1])
@@ -290,64 +255,52 @@ async def handle_buy(callback: types.CallbackQuery):
     
     balance = await get_balance(user_id)
     if balance < product["price"]:
-        await callback.answer(f"❌ Недостаточно средств! Нужно {product['price']} ₽")
+        await callback.answer(f"❌ Нужно {product['price']}₽")
         return
     
     key_row = await get_unused_key(product_id)
     if not key_row:
-        await callback.answer("❌ Ключи закончились. Обратитесь в поддержку")
+        await callback.answer("❌ Ключи закончились")
         return
     
     await update_user_balance(user_id, balance - product["price"])
     await mark_key_as_used(key_row["id"])
     await add_purchase(user_id, product_id, product["price"])
     
-    vip_link = "https://t.me/joinchat/AAAAAEAAAAAAAAAAAAAAAAAAAAA"
+    success = tg_emoji(EMOJI_IDS["success"], "✅")
+    party = tg_emoji(EMOJI_IDS["party"], "🎉")
     
     await callback.message.answer(
-        f"{emoji_html(EMOJI['success'], '✅')} <b>Покупка успешна!</b>\n\n"
-        f"{emoji_html(EMOJI['key'], '🎮')} Товар: {product['name']}\n"
-        f"{emoji_html(EMOJI['money'], '💰')} Цена: {product['price']} ₽\n"
-        f"{emoji_html(EMOJI['key'], '🔑')} <b>Ключ:</b> <code>{key_row['key_value']}</code>\n\n"
-        f"{emoji_html(EMOJI['vip'], '🔗')} <b>Ссылка на VIP канал:</b>\n"
-        f"<a href='{vip_link}'>Нажмите для вступления</a>\n\n"
-        f"{emoji_html(EMOJI['sparkles'], '💡')} Сохраните ключ, он не будет показан снова!",
-        parse_mode="HTML",
-        disable_web_page_preview=True
+        f"{success} <b>Покупка успешна!</b>\n\n"
+        f"Товар: {product['name']}\n"
+        f"Цена: {product['price']}₽\n"
+        f"🔑 <code>{key_row['key_value']}</code>\n\n"
+        f"👉 <a href='https://t.me/joinchat/...'>VIP канал</a>",
+        parse_mode="HTML"
     )
-    await callback.answer(f"{emoji_html(EMOJI['party'], '🎉')} Спасибо за покупку!")
+    await callback.answer(f"{party} Спасибо!")
 
-# ========== АДМИН-КОМАНДЫ ==========
+# ========== АДМИН ==========
 @dp.message(Command("admin"))
 async def admin_cmd(message: Message):
     if message.from_user.id != ADMIN_ID:
-        await message.answer(f"{emoji_html(EMOJI['error'], '⛔')} <b>Доступ запрещен</b>", parse_mode="HTML")
+        await message.answer("⛔ Доступ закрыт")
         return
-    
-    await message.answer(
-        f"{emoji_html(EMOJI['crown'], '🔐')} <b>Админ-панель</b>\n\nВыберите действие:",
-        parse_mode="HTML",
-        reply_markup=admin_menu
-    )
+    crown = tg_emoji(EMOJI_IDS["crown"], "🔐")
+    await message.answer(f"{crown} Админ-панель", reply_markup=admin_menu)
 
-@dp.message(lambda m: m.text == "➕ Добавить товар")
+@dp.message(lambda m: m.text == "➕ Товар")
 async def add_product_cmd(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     await state.set_state(AddProductStates.waiting_name)
-    await message.answer(
-        f"{emoji_html(EMOJI['key'], '📝')} Введите <b>название товара</b>:",
-        parse_mode="HTML"
-    )
+    await message.answer("📝 Название товара:")
 
 @dp.message(AddProductStates.waiting_name)
 async def product_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
     await state.set_state(AddProductStates.waiting_price)
-    await message.answer(
-        f"{emoji_html(EMOJI['money'], '💰')} Введите <b>цену</b> (число):",
-        parse_mode="HTML"
-    )
+    await message.answer("💰 Цена (число):")
 
 @dp.message(AddProductStates.waiting_price)
 async def product_price(message: Message, state: FSMContext):
@@ -355,141 +308,97 @@ async def product_price(message: Message, state: FSMContext):
         price = int(message.text)
         await state.update_data(price=price)
         await state.set_state(AddProductStates.waiting_keys)
-        await message.answer(
-            f"{emoji_html(EMOJI['key'], '🔑')} Введите <b>ключи</b> (каждый с новой строки):\n\n"
-            f"Пример:\n<code>KEY-123-ABC</code>\n<code>KEY-456-DEF</code>\n\n"
-            f"Сколько ключей введете — столько и будет в наличии.",
-            parse_mode="HTML"
-        )
+        await message.answer("🔑 Ключи (каждый с новой строки):")
     except ValueError:
-        await message.answer(
-            f"{emoji_html(EMOJI['error'], '❌')} Введите <b>число</b>!",
-            parse_mode="HTML"
-        )
+        await message.answer("❌ Введи число")
 
 @dp.message(AddProductStates.waiting_keys)
 async def product_keys(message: Message, state: FSMContext):
     data = await state.get_data()
-    name = data["name"]
-    price = data["price"]
-    
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
-    
     if not keys:
-        await message.answer(
-            f"{emoji_html(EMOJI['error'], '❌')} Необходимо ввести хотя бы один ключ!",
-            parse_mode="HTML"
-        )
+        await message.answer("❌ Хотя бы один ключ")
         return
     
-    product_id = await add_product(name, price)
+    product_id = await add_product(data["name"], data["price"])
     await add_keys_to_product(product_id, keys)
-    
-    await message.answer(
-        f"{emoji_html(EMOJI['success'], '✅')} <b>Товар добавлен!</b>\n\n"
-        f"📛 Название: {name}\n"
-        f"{emoji_html(EMOJI['money'], '💰')} Цена: {price} ₽\n"
-        f"{emoji_html(EMOJI['key'], '🔑')} Количество ключей: {len(keys)}\n\n"
-        f"📦 ID товара: {product_id}",
-        parse_mode="HTML"
-    )
+    success = tg_emoji(EMOJI_IDS["success"], "✅")
+    await message.answer(f"{success} Товар добавлен! {len(keys)} ключей")
     await state.clear()
 
-@dp.message(lambda m: m.text == "🔑 Добавить ключи")
-async def add_keys_cmd(message: Message, state: FSMContext):
+@dp.message(lambda m: m.text == "🔑 Ключи")
+async def add_keys_only(message: Message, state: FSMContext):
     if message.from_user.id != ADMIN_ID:
         return
     products = await get_all_products()
     if not products:
-        await message.answer("❌ Сначала добавьте товар", parse_mode="HTML")
+        await message.answer("❌ Сначала добавь товар")
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"key_product_{p['id']}")]
-        for p in products
+        [InlineKeyboardButton(text=p['name'], callback_data=f"addkeys_{p['id']}")] for p in products
     ])
-    await message.answer("📦 Выберите товар для добавления ключей:", reply_markup=kb)
+    await message.answer("Выбери товар:", reply_markup=kb)
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("key_product_"))
-async def select_product_keys(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔")
-        return
-    product_id = int(callback.data.split("_")[2])
+@dp.callback_query(lambda c: c.data and c.data.startswith("addkeys_"))
+async def select_for_keys(callback: types.CallbackQuery, state: FSMContext):
+    product_id = int(callback.data.split("_")[1])
     await state.update_data(product_id=product_id)
     await state.set_state(AddKeysStates.waiting_keys)
-    await callback.message.answer(
-        f"{emoji_html(EMOJI['key'], '🔑')} Отправьте <b>ключи</b> (каждый с новой строки):",
-        parse_mode="HTML"
-    )
+    await callback.message.answer("🔑 Введи ключи (по одному на строку):")
     await callback.answer()
 
 @dp.message(AddKeysStates.waiting_keys)
-async def process_keys(message: Message, state: FSMContext):
+async def process_keys_only(message: Message, state: FSMContext):
     data = await state.get_data()
     product_id = data["product_id"]
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
-    
     await add_keys_to_product(product_id, keys)
-    await message.answer(
-        f"{emoji_html(EMOJI['success'], '✅')} <b>Добавлено {len(keys)} ключей!</b>",
-        parse_mode="HTML"
-    )
+    success = tg_emoji(EMOJI_IDS["success"], "✅")
+    await message.answer(f"{success} Добавлено {len(keys)} ключей")
     await state.clear()
 
 @dp.message(lambda m: m.text == "📊 Статистика")
 async def stats_cmd(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
-    
     stats = await get_stats()
-    
+    star = tg_emoji(EMOJI_IDS["star"], "📊")
     await message.answer(
-        f"{emoji_html(EMOJI['star'], '📊')} <b>Статистика</b>\n\n"
-        f"👥 Пользователей: <code>{stats['users']}</code>\n"
-        f"{emoji_html(EMOJI['money'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
-        f"{emoji_html(EMOJI['key'], '🔑')} Выдано ключей: <code>{stats['keys_sold']}</code>\n"
-        f"{emoji_html(EMOJI['key'], '🔑')} Осталось ключей: <code>{stats['keys_left']}</code>\n"
-        f"📦 Товаров в продаже: <code>{stats['products_count']}</code>",
+        f"{star} Статистика\n\n"
+        f"👥 Пользователей: {stats['users']}\n"
+        f"💰 Продаж: {stats['total_sales']}₽\n"
+        f"🔑 Выдано: {stats['keys_sold']}\n"
+        f"🔑 Осталось: {stats['keys_left']}",
         parse_mode="HTML"
     )
 
-# ========== FLASK ВЕБХУК ==========
+# ========== ВЕБХУК ДЛЯ PLATEGA ==========
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
     data = request.get_json()
-    
-    payment_id = data.get("payment_id")
     user_id = data.get("user_id")
     amount = data.get("amount")
     status = data.get("status")
     
     if status == "success" and user_id and amount:
-        async def update_balance():
+        async def upd():
             current = await get_balance(user_id)
             await update_user_balance(user_id, current + amount)
+            success = tg_emoji(EMOJI_IDS["success"], "✅")
             await bot.send_message(
                 user_id,
-                f"{emoji_html(EMOJI['success'], '✅')} <b>Баланс пополнен!</b>\n\n"
-                f"Сумма: <code>{amount} ₽</code>\n"
-                f"Новый баланс: <code>{current + amount} ₽</code>",
+                f"{success} Баланс пополнен на {amount}₽",
                 parse_mode="HTML"
             )
-        
-        asyncio.run(update_balance())
-        
-        if user_id in pending_payments:
-            del pending_payments[user_id]
-        
+        asyncio.run(upd())
         return jsonify({"status": "ok"}), 200
-    
     return jsonify({"status": "error"}), 400
 
 @flask_app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "alive"}), 200
 
-# ========== ЗАПУСК ==========
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
@@ -497,11 +406,8 @@ def run_flask():
 async def main():
     await connect_db()
     await bot.delete_webhook(drop_pending_updates=True)
-    
-    thread = Thread(target=run_flask, daemon=True)
-    thread.start()
-    
-    print("🤖 Бот запущен!")
+    Thread(target=run_flask, daemon=True).start()
+    print("✅ Бот запущен")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
