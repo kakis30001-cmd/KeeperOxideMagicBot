@@ -116,16 +116,32 @@ async def get_all_products():
     async with pool.acquire() as conn:
         return await conn.fetch("SELECT id, name, price FROM products ORDER BY id")
 
+async def get_product_by_id(product_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT id, name, price FROM products WHERE id = $1", product_id)
+
 async def add_product(name: str, price: int) -> int:
     async with pool.acquire() as conn:
         row = await conn.fetchrow("INSERT INTO products (name, price) VALUES ($1, $2) RETURNING id", name, price)
         return row["id"]
+
+async def delete_product(product_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM products WHERE id = $1", product_id)
 
 async def add_keys_to_product(product_id: int, keys_list: list):
     async with pool.acquire() as conn:
         for key in keys_list:
             if key.strip():
                 await conn.execute("INSERT INTO keys_store (product_id, key_value) VALUES ($1, $2)", product_id, key.strip())
+
+async def get_keys_by_product(product_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT id, key_value, used FROM keys_store WHERE product_id = $1 ORDER BY id", product_id)
+
+async def delete_key(key_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM keys_store WHERE id = $1", key_id)
 
 async def get_unused_key(product_id: int):
     async with pool.acquire() as conn:
