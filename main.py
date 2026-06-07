@@ -2,6 +2,8 @@ import asyncio
 import os
 import uuid
 import hashlib
+import hmac
+import json
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request, jsonify
@@ -12,14 +14,16 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
+import requests
 
-from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, PLATEGA_SHOP_ID, PLATEGA_SECRET_KEY
+from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
     get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used,
-    get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_referral_config, update_referral_config, add_balance
+    get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_referral_config,
+    update_referral_config, add_balance, get_product_by_id, delete_product, get_keys_by_product, delete_key
 )
 
 STICKERS = {
@@ -57,6 +61,8 @@ BUTTON_EMOJI = {
     "broadcast": "5872771279337033184",
     "promocode": "5872771279337033184",
     "referral": "5872771279337033184",
+    "delete_product": "5872771279337033184",
+    "delete_key": "5872771279337033184",
 }
 
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
@@ -100,6 +106,12 @@ class AdminRefBonusStates(StatesGroup):
     waiting_type = State()
     waiting_value = State()
 
+class AdminDeleteProductStates(StatesGroup):
+    waiting_product_id = State()
+
+class AdminDeleteKeyStates(StatesGroup):
+    waiting_key_id = State()
+
 async def create_vip_link(user_id: int, days: int = 30):
     try:
         invite_link = await bot.create_chat_invite_link(
@@ -111,33 +123,57 @@ async def create_vip_link(user_id: int, days: int = 30):
     except:
         return None
 
-async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
-    if not PLATEGA_SHOP_ID or not PLATEGA_SECRET_KEY:
+async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
+    if not MERCHANT_ID or not API_SECRET:
         return None
     
-    url = "https://platega.com/api/v1/payment"
+    url = "https://app.platega.io/v2/transaction/process"
     
-    data = {
-        "shop_id": PLATEGA_SHOP_ID,
-        "amount": amount,
-        "currency": "RUB",
-        "order_id": payment_id,
-        "description": f"Пополнение баланса пользователя {user_id}",
-        "success_url": f"{RAILWAY_URL}/payment/success",
-        "fail_url": f"{RAILWAY_URL}/payment/fail",
-        "webhook_url": f"{RAILWAY_URL}/webhook/payment"
+    headers = {
+        "Content-Type": "application/json",
+        "X-MerchantId": MERCHANT_ID,
+        "X-Secret": API_SECRET
     }
     
-    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{payment_id}:{PLATEGA_SECRET_KEY}"
-    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
+    data = {
+        "command": "create",
+        "paymentDetails": {
+            "amount": float(amount),
+            "currency": "RUB"
+        },
+        "description": f"Пополнение баланса пользователя {user_id}",
+        "return": f"{RAILWAY_URL}/payment/success",
+        "failedUrl": f"{RAILWAY_URL}/payment/fail",
+        "payload": f"order_{user_id}_{order_id}",
+        "paymentMethod": ["SBP", "CRYPTO"]
+    }
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(url, json=data) as resp:
+            async with session.post(url, headers=headers, json=data) as resp:
                 result = await resp.json()
-                if result.get("status") == "success":
-                    return result.get("payment_url")
+                if result.get("url"):
+                    return result.get("url")
                 return None
+        except:
+            return None
+
+async def check_platega_payment(transaction_id: str):
+    if not MERCHANT_ID or not API_SECRET:
+        return None
+    
+    url = f"https://app.platega.io/transaction/{transaction_id}"
+    
+    headers = {
+        "X-MerchantId": MERCHANT_ID,
+        "X-Secret": API_SECRET
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, headers=headers) as resp:
+                result = await resp.json()
+                return result.get("status")
         except:
             return None
 
@@ -183,6 +219,10 @@ def get_admin_keyboard():
         ],
         [
             InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=BUTTON_EMOJI["referral"]),
+        ],
+        [
+            InlineKeyboardButton(text="Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=BUTTON_EMOJI["delete_product"]),
+            InlineKeyboardButton(text="Управление ключами", callback_data="admin_manage_keys", icon_custom_emoji_id=BUTTON_EMOJI["delete_key"])
         ],
         [
             InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
@@ -348,14 +388,14 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.clear()
         
-        payment_id = str(uuid.uuid4())
+        order_id = str(uuid.uuid4())[:8]
         pending_payments[message.from_user.id] = {
             "amount": amount,
-            "payment_id": payment_id,
+            "order_id": order_id,
             "status": "pending"
         }
         
-        payment_url = await create_platega_payment(amount, payment_id, message.from_user.id)
+        payment_url = await create_platega_payment(amount, order_id, message.from_user.id)
         
         if not payment_url:
             await message.answer(
@@ -371,7 +411,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
             f"Сумма: <code>{amount} ₽</code>\n\n"
             f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
-            f"🆔 ID платежа: <code>{payment_id}</code>\n\n"
+            f"🆔 Номер заказа: <code>{order_id}</code>\n\n"
             f"⚡ После оплаты баланс пополнится автоматически",
             parse_mode="HTML",
             disable_web_page_preview=True,
@@ -610,6 +650,106 @@ async def process_keys_only(message: Message, state: FSMContext):
         reply_markup=get_admin_keyboard()
     )
     await state.clear()
+
+@dp.callback_query(lambda c: c.data == "admin_manage_products")
+async def admin_manage_products(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    products = await get_all_products()
+    if not products:
+        await callback.message.edit_text(
+            "📭 <b>Список товаров пуст</b>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+        )
+        await callback.answer()
+        return
+    
+    text = "📦 <b>Список товаров</b>\n\n"
+    for p in products:
+        text += f"🆔 ID: {p['id']}\n"
+        text += f"📛 Название: {p['name']}\n"
+        text += f"💰 Цена: {p['price']} ₽\n"
+        text += f"🗑️ /delproduct_{p['id']} - удалить товар\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
+    await callback.answer()
+
+@dp.message(lambda m: m.text and m.text.startswith("/delproduct_"))
+async def delete_product_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        product_id = int(message.text.split("_")[1])
+        await delete_product(product_id)
+        await message.answer("✅ Товар удален!", reply_markup=get_admin_keyboard())
+    except:
+        await message.answer("❌ Ошибка при удалении")
+
+@dp.callback_query(lambda c: c.data == "admin_manage_keys")
+async def admin_manage_keys(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    products = await get_all_products()
+    if not products:
+        await callback.message.edit_text(
+            "📭 <b>Сначала добавьте товар</b>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+        )
+        await callback.answer()
+        return
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"showkeys_{p['id']}")]
+        for p in products
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    
+    await callback.message.edit_text("🔑 Выберите товар для просмотра ключей:", reply_markup=kb)
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("showkeys_"))
+async def show_keys(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    product_id = int(callback.data.split("_")[1])
+    product = await get_product_by_id(product_id)
+    keys = await get_keys_by_product(product_id)
+    
+    if not keys:
+        await callback.message.edit_text(
+            f"🔑 <b>Ключи для товара {product['name']}</b>\n\nСписок пуст",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_manage_keys", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+        )
+        await callback.answer()
+        return
+    
+    text = f"🔑 <b>Ключи для товара {product['name']}</b>\n\n"
+    for k in keys:
+        status = "✅ Использован" if k["used"] else "🟢 Доступен"
+        text += f"🆔 ID: {k['id']} | {k['key_value']} | {status}\n"
+        text += f"🗑️ /delkey_{k['id']} - удалить ключ\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_manage_keys", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
+    await callback.answer()
+
+@dp.message(lambda m: m.text and m.text.startswith("/delkey_"))
+async def delete_key_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        key_id = int(message.text.split("_")[1])
+        await delete_key(key_id)
+        await message.answer("✅ Ключ удален!", reply_markup=get_admin_keyboard())
+    except:
+        await message.answer("❌ Ошибка при удалении")
 
 @dp.callback_query(lambda c: c.data == "admin_add_balance")
 async def admin_add_balance(callback: CallbackQuery, state: FSMContext):
@@ -982,32 +1122,32 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
 
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
-    data = request.get_json()
-    
+    data = request.json
     status = data.get("status")
-    order_id = data.get("order_id")
-    amount = int(data.get("amount", 0))
+    payload = data.get("payload")
     
-    if status == "success" and order_id:
-        user_id = None
-        for uid, info in pending_payments.items():
-            if info["payment_id"] == order_id:
-                user_id = uid
-                break
-        
-        if user_id:
-            async def update_balance():
-                current = await get_balance(user_id)
-                await update_user_balance(user_id, current + amount)
-                await bot.send_message(
-                    user_id,
-                    f"✅ <b>Баланс пополнен!</b>\n\nСумма: <code>{amount} ₽</code>\nНовый баланс: <code>{current + amount} ₽</code>",
-                    parse_mode="HTML"
-                )
-                del pending_payments[user_id]
+    if status == "CONFIRMED" and payload:
+        parts = payload.split("_")
+        if len(parts) >= 3 and parts[0] == "order":
+            user_id = int(parts[1])
+            order_id = parts[2]
             
-            asyncio.run(update_balance())
-            return jsonify({"status": "ok"}), 200
+            for uid, info in pending_payments.items():
+                if uid == user_id and info["order_id"] == order_id:
+                    amount = info["amount"]
+                    
+                    async def update_balance():
+                        current = await get_balance(user_id)
+                        await update_user_balance(user_id, current + amount)
+                        await bot.send_message(
+                            user_id,
+                            f"✅ <b>Баланс пополнен!</b>\n\nСумма: <code>{amount} ₽</code>\nНовый баланс: <code>{current + amount} ₽</code>",
+                            parse_mode="HTML"
+                        )
+                        del pending_payments[user_id]
+                    
+                    asyncio.run(update_balance())
+                    return jsonify({"status": "ok"}), 200
     
     return jsonify({"status": "error"}), 400
 
