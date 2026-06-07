@@ -13,15 +13,13 @@ async def connect_db():
     )
 
     async with pool.acquire() as conn:
-        # Таблица users
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users(
             user_id BIGINT PRIMARY KEY,
             balance INTEGER DEFAULT 0
         )
         """)
-
-        # Таблица products
+        
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS products(
             id SERIAL PRIMARY KEY,
@@ -30,7 +28,6 @@ async def connect_db():
         )
         """)
 
-        # Таблица keys_store
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS keys_store(
             id SERIAL PRIMARY KEY,
@@ -40,7 +37,6 @@ async def connect_db():
         )
         """)
 
-        # Таблица purchases (история покупок)
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS purchases(
             id SERIAL PRIMARY KEY,
@@ -82,7 +78,6 @@ async def get_product_by_id(product_id: int):
         return await conn.fetchrow("SELECT id, name, price FROM products WHERE id = $1", product_id)
 
 async def add_product(name: str, price: int) -> int:
-    """Добавляет товар и возвращает его ID"""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "INSERT INTO products (name, price) VALUES ($1, $2) RETURNING id",
@@ -91,7 +86,6 @@ async def add_product(name: str, price: int) -> int:
         return row["id"]
 
 async def add_keys_to_product(product_id: int, keys_list: list):
-    """Добавляет несколько ключей для товара"""
     async with pool.acquire() as conn:
         for key in keys_list:
             if key.strip():
@@ -101,7 +95,6 @@ async def add_keys_to_product(product_id: int, keys_list: list):
                 )
 
 async def get_unused_key(product_id: int):
-    """Получает один неиспользованный ключ для товара"""
     async with pool.acquire() as conn:
         return await conn.fetchrow(
             "SELECT id, key_value FROM keys_store WHERE product_id = $1 AND used = FALSE LIMIT 1",
@@ -109,7 +102,6 @@ async def get_unused_key(product_id: int):
         )
 
 async def mark_key_as_used(key_id: int):
-    """Отмечает ключ как использованный"""
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE keys_store SET used = TRUE WHERE id = $1",
@@ -117,7 +109,6 @@ async def mark_key_as_used(key_id: int):
         )
 
 async def add_purchase(user_id: int, product_id: int, price: int):
-    """Добавляет запись о покупке в историю"""
     async with pool.acquire() as conn:
         await conn.execute(
             "INSERT INTO purchases (user_id, product_id, price) VALUES ($1, $2, $3)",
@@ -125,7 +116,6 @@ async def add_purchase(user_id: int, product_id: int, price: int):
         )
 
 async def get_user_purchases(user_id: int):
-    """Получает историю покупок пользователя"""
     async with pool.acquire() as conn:
         return await conn.fetch(
             """
@@ -139,7 +129,6 @@ async def get_user_purchases(user_id: int):
         )
 
 async def get_stats():
-    """Возвращает статистику для админа"""
     async with pool.acquire() as conn:
         users = await conn.fetchval("SELECT COUNT(*) FROM users")
         total_sales = await conn.fetchval("SELECT COALESCE(SUM(price), 0) FROM purchases")
@@ -156,7 +145,6 @@ async def get_stats():
         }
 
 async def get_all_keys(product_id: int = None):
-    """Получает все ключи (для админа), опционально по товару"""
     async with pool.acquire() as conn:
         if product_id:
             return await conn.fetch(
@@ -174,6 +162,5 @@ async def get_all_keys(product_id: int = None):
             )
 
 async def delete_product(product_id: int):
-    """Удаляет товар и все связанные ключи (CASCADE сделает это автоматически)"""
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM products WHERE id = $1", product_id)
