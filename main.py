@@ -406,6 +406,8 @@ def run_flask():
 async def main():
     await connect_db()
     await bot.delete_webhook(drop_pending_updates=True)
+    await bot.session.close()
+    await asyncio.sleep(1)
     Thread(target=run_flask, daemon=True).start()
     print("✅ Бот запущен")
     await dp.start_polling(bot)
