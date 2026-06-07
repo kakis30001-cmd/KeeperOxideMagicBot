@@ -12,14 +12,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID
+from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, PLATEGA_SHOP_ID, PLATEGA_SECRET_KEY
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
     get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used,
-    get_all_promocodes, delete_promocode, add_vip_link, get_and_use_vip_link, get_all_vip_links,
-    deactivate_vip_link, get_referrer, get_referrals_count, get_referral_config, update_referral_config, add_balance
+    get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_referral_config, update_referral_config, add_balance
 )
 
 STICKERS = {
@@ -57,7 +56,6 @@ BUTTON_EMOJI = {
     "broadcast": "5872771279337033184",
     "promocode": "5872771279337033184",
     "referral": "5872771279337033184",
-    "vip_link": "5872771279337033184",
 }
 
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
@@ -102,7 +100,34 @@ class AdminRefBonusStates(StatesGroup):
     waiting_value = State()
 
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
-    return None
+    if not PLATEGA_SHOP_ID or not PLATEGA_SECRET_KEY:
+        return None
+    
+    url = "https://platega.com/api/v1/payment"
+    
+    data = {
+        "shop_id": PLATEGA_SHOP_ID,
+        "amount": amount,
+        "currency": "RUB",
+        "order_id": payment_id,
+        "description": f"Пополнение баланса пользователя {user_id}",
+        "success_url": f"{RAILWAY_URL}/payment/success",
+        "fail_url": f"{RAILWAY_URL}/payment/fail",
+        "webhook_url": f"{RAILWAY_URL}/webhook/payment"
+    }
+    
+    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{payment_id}:{PLATEGA_SECRET_KEY}"
+    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=data) as resp:
+                result = await resp.json()
+                if result.get("status") == "success":
+                    return result.get("payment_url")
+                return None
+        except:
+            return None
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -146,7 +171,6 @@ def get_admin_keyboard():
         ],
         [
             InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=BUTTON_EMOJI["referral"]),
-            InlineKeyboardButton(text="Создать VIP ссылку", callback_data="admin_create_vip_link", icon_custom_emoji_id=BUTTON_EMOJI["vip_link"])
         ],
         [
             InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
@@ -450,18 +474,18 @@ async def handle_buy(callback: CallbackQuery):
             member_limit=1,
             expire_date=None
         )
-        await add_vip_link(invite_link.invite_link, user_id)
         vip_link = invite_link.invite_link
     except:
         vip_link = "https://t.me/+a5AssXS77w01Yjky"
     
     await callback.message.answer(
-        f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Выбран товар • {product['name']}</b>\n\n"
+        f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Покупка успешна!</b>\n\n"
         f"{tg_emoji(STICKERS['keys_count'], '🔑')} <b>Ключей в наличии:</b> {keys_left}\n"
         f"{tg_emoji(STICKERS['price_icon'], '💰')} <b>Цена:</b> {product['price']} ₽\n\n"
         f"{tg_emoji(STICKERS['product_selected'], '🔑')} <b>Ваш ключ:</b> <code>{key_row['key_value']}</code>\n\n"
         f"🔗 <b>Ссылка на VIP канал (одноразовая):</b>\n"
-        f"<a href='{vip_link}'>Нажмите для вступления</a>",
+        f"<a href='{vip_link}'>Нажмите для вступления</a>\n\n"
+        f"⚠️ Ссылка действительна только для вас и только один раз!",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]])
@@ -922,38 +946,6 @@ async def ref_value_callback(message: Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Введите число")
 
-@dp.callback_query(lambda c: c.data == "admin_create_vip_link")
-async def admin_create_vip_link(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔")
-        return
-    
-    try:
-        invite_link = await bot.create_chat_invite_link(
-            chat_id=CHANNEL_ID,
-            member_limit=1,
-            expire_date=None
-        )
-        
-        await add_vip_link(invite_link.invite_link, 0)
-        
-        await callback.message.edit_text(
-            f"✅ <b>Новая одноразовая VIP ссылка создана!</b>\n\n"
-            f"🔗 {invite_link.invite_link}\n\n"
-            f"⚠️ Ссылка одноразовая (действует для 1 человека).",
-            parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
-        )
-    except Exception as e:
-        await callback.message.edit_text(
-            f"❌ <b>Ошибка создания ссылки</b>\n\n"
-            f"Проверьте что бот добавлен в канал админом.\n\n"
-            f"Ошибка: {str(e)[:200]}",
-            parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
-        )
-    await callback.answer()
-
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -985,7 +977,41 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
     data = request.get_json()
-    return jsonify({"status": "ok"}), 200
+    
+    status = data.get("status")
+    order_id = data.get("order_id")
+    amount = int(data.get("amount", 0))
+    
+    if status == "success" and order_id:
+        user_id = None
+        for uid, info in pending_payments.items():
+            if info["payment_id"] == order_id:
+                user_id = uid
+                break
+        
+        if user_id:
+            async def update_balance():
+                current = await get_balance(user_id)
+                await update_user_balance(user_id, current + amount)
+                await bot.send_message(
+                    user_id,
+                    f"✅ <b>Баланс пополнен!</b>\n\nСумма: <code>{amount} ₽</code>\nНовый баланс: <code>{current + amount} ₽</code>",
+                    parse_mode="HTML"
+                )
+                del pending_payments[user_id]
+            
+            asyncio.run(update_balance())
+            return jsonify({"status": "ok"}), 200
+    
+    return jsonify({"status": "error"}), 400
+
+@flask_app.route("/payment/success", methods=["GET"])
+def payment_success():
+    return "Оплата прошла успешно! Можете вернуться в бота.", 200
+
+@flask_app.route("/payment/fail", methods=["GET"])
+def payment_fail():
+    return "Оплата не прошла. Попробуйте снова.", 200
 
 @flask_app.route("/health", methods=["GET"])
 def health():
