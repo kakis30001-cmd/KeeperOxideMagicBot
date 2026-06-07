@@ -12,16 +12,15 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL
+from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
     get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used,
-    get_all_promocodes, delete_promocode, add_vip_link, get_active_vip_link, get_all_vip_links, deactivate_vip_link
+    get_all_promocodes, delete_promocode, add_vip_link, get_and_use_vip_link, get_all_vip_links,
+    deactivate_vip_link, get_referrer, get_referrals_count, get_referral_config, update_referral_config, add_balance
 )
-
-CHANNEL_ID = -1003709565134
 
 STICKERS = {
     "welcome": "5388795032775968174",
@@ -57,6 +56,7 @@ BUTTON_EMOJI = {
     "add_balance": "5807465992363710697",
     "broadcast": "5872771279337033184",
     "promocode": "5872771279337033184",
+    "referral": "5872771279337033184",
     "vip_link": "5872771279337033184",
 }
 
@@ -97,8 +97,9 @@ class AdminCreatePromocodeStates(StatesGroup):
 class ProfileActivatePromocodeStates(StatesGroup):
     waiting_code = State()
 
-class AdminVipLinkStates(StatesGroup):
-    waiting_action = State()
+class AdminRefBonusStates(StatesGroup):
+    waiting_type = State()
+    waiting_value = State()
 
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
     return None
@@ -121,7 +122,8 @@ def get_profile_keyboard():
             InlineKeyboardButton(text="История заказов", callback_data="profile_history", icon_custom_emoji_id=BUTTON_EMOJI["history"])
         ],
         [
-            InlineKeyboardButton(text="Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])
+            InlineKeyboardButton(text="Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]),
+            InlineKeyboardButton(text="Реферальная система", callback_data="profile_referral", icon_custom_emoji_id=BUTTON_EMOJI["referral"])
         ],
         [
             InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])
@@ -143,8 +145,8 @@ def get_admin_keyboard():
             InlineKeyboardButton(text="Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])
         ],
         [
-            InlineKeyboardButton(text="Создать ссылку VIP", callback_data="admin_create_vip_link", icon_custom_emoji_id=BUTTON_EMOJI["vip_link"]),
-            InlineKeyboardButton(text="Список VIP ссылок", callback_data="admin_list_vip_links", icon_custom_emoji_id=BUTTON_EMOJI["vip_link"])
+            InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=BUTTON_EMOJI["referral"]),
+            InlineKeyboardButton(text="Создать VIP ссылку", callback_data="admin_create_vip_link", icon_custom_emoji_id=BUTTON_EMOJI["vip_link"])
         ],
         [
             InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
@@ -154,7 +156,23 @@ def get_admin_keyboard():
 
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
-    await add_user(message.from_user.id)
+    args = message.text.split()
+    referrer_id = None
+    if len(args) > 1 and args[1].startswith("ref_"):
+        try:
+            referrer_id = int(args[1].split("_")[1])
+            if referrer_id == message.from_user.id:
+                referrer_id = None
+        except:
+            pass
+    
+    await add_user(message.from_user.id, referrer_id)
+    
+    if referrer_id:
+        config = await get_referral_config()
+        if config["bonus_type"] == "rubles" and config["bonus_value"] > 0:
+            await add_balance(referrer_id, config["bonus_value"])
+            await bot.send_message(referrer_id, f"💰 По вашей реферальной ссылке зарегистрировался новый пользователь! Вы получили {config['bonus_value']} ₽ бонуса!")
     
     text = (
         f"{tg_emoji(STICKERS['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
@@ -222,6 +240,26 @@ async def menu_profile(callback: CallbackQuery):
         f"{tg_emoji(STICKERS['balance_icon'], '💰')} Баланс: <code>{balance} ₽</code>"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_profile_keyboard())
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "profile_referral")
+async def profile_referral(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    bot_username = (await bot.get_me()).username
+    ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
+    referrals_count = await get_referrals_count(user_id)
+    config = await get_referral_config()
+    
+    text = (
+        f"{tg_emoji(BUTTON_EMOJI['referral'], '👥')} <b>Реферальная система</b>\n\n"
+        f"Приглашайте друзей и получайте бонусы!\n\n"
+        f"🔗 <b>Ваша ссылка:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        f"👥 Приглашено друзей: <code>{referrals_count}</code>\n"
+        f"💰 Бонус за приглашение: <code>{config['bonus_value']} {config['bonus_type']}</code>\n\n"
+        f"💡 Бонус начисляется сразу после регистрации по вашей ссылке!"
+    )
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_history")
@@ -294,10 +332,11 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             return
         
         await message.answer(
-            f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата</b>\n\n"
+            f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
             f"Сумма: <code>{amount} ₽</code>\n\n"
             f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
-            f"🆔 ID платежа: <code>{payment_id}</code>",
+            f"🆔 ID платежа: <code>{payment_id}</code>\n\n"
+            f"⚡ После оплаты баланс пополнится автоматически",
             parse_mode="HTML",
             disable_web_page_preview=True,
             reply_markup=get_profile_keyboard()
@@ -405,15 +444,23 @@ async def handle_buy(callback: CallbackQuery):
     async with pool.acquire() as conn:
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE product_id = $1 AND used = FALSE", product_id)
     
-    vip_link_row = await get_active_vip_link()
-    vip_link = vip_link_row["link"] if vip_link_row else "https://t.me/+a5AssXS77w01Yjky"
+    try:
+        invite_link = await bot.create_chat_invite_link(
+            chat_id=CHANNEL_ID,
+            member_limit=1,
+            expire_date=None
+        )
+        await add_vip_link(invite_link.invite_link, user_id)
+        vip_link = invite_link.invite_link
+    except:
+        vip_link = "https://t.me/+a5AssXS77w01Yjky"
     
     await callback.message.answer(
         f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Выбран товар • {product['name']}</b>\n\n"
         f"{tg_emoji(STICKERS['keys_count'], '🔑')} <b>Ключей в наличии:</b> {keys_left}\n"
         f"{tg_emoji(STICKERS['price_icon'], '💰')} <b>Цена:</b> {product['price']} ₽\n\n"
         f"{tg_emoji(STICKERS['product_selected'], '🔑')} <b>Ваш ключ:</b> <code>{key_row['key_value']}</code>\n\n"
-        f"🔗 <b>Ссылка на VIP канал:</b>\n"
+        f"🔗 <b>Ссылка на VIP канал (одноразовая):</b>\n"
         f"<a href='{vip_link}'>Нажмите для вступления</a>",
         parse_mode="HTML",
         disable_web_page_preview=True,
@@ -815,21 +862,70 @@ async def delete_promocode_cmd(message: Message):
     except:
         await message.answer("❌ Ошибка при удалении")
 
-@dp.callback_query(lambda c: c.data == "admin_create_vip_link")
-async def admin_create_vip_link(callback: CallbackQuery):
+@dp.callback_query(lambda c: c.data == "admin_ref_config")
+async def admin_ref_config(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ Доступ запрещен")
+        await callback.answer("⛔")
         return
     
-    if not CHANNEL_ID:
-        await callback.message.edit_text(
-            "❌ <b>ID канала не задан!</b>\n\n"
-            "Добавьте переменную CHANNEL_ID в Railway.\n"
-            "ID канала должен быть отрицательным: -1001822487778",
+    await state.set_state(AdminRefBonusStates.waiting_type)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Бонус в рублях (₽)", callback_data="ref_type_rubles")],
+        [InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]
+    ])
+    await callback.message.edit_text(
+        "🎁 <b>Настройка реферального бонуса</b>\n\n"
+        "Выберите тип бонуса за приглашение друга:",
+        parse_mode="HTML",
+        reply_markup=kb
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("ref_type_"))
+async def ref_type_callback(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    bonus_type = callback.data.split("_")[2]
+    await state.update_data(bonus_type=bonus_type)
+    await state.set_state(AdminRefBonusStates.waiting_value)
+    await callback.message.edit_text(
+        "💰 Введите сумму бонуса в рублях:\n\nПример: <code>50</code>",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@dp.message(AdminRefBonusStates.waiting_value)
+async def ref_value_callback(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        value = int(message.text.strip())
+        if value <= 0:
+            await message.answer("❌ Значение должно быть больше 0")
+            return
+        
+        data = await state.get_data()
+        bonus_type = data["bonus_type"]
+        
+        await update_referral_config(bonus_type, value)
+        
+        await message.answer(
+            f"✅ <b>Настройки реферальной системы обновлены!</b>\n\n"
+            f"🎁 Тип бонуса: {bonus_type}\n"
+            f"💰 Сумма: {value}",
             parse_mode="HTML",
             reply_markup=get_admin_keyboard()
         )
-        await callback.answer()
+        await state.clear()
+    except ValueError:
+        await message.answer("❌ Введите число")
+
+@dp.callback_query(lambda c: c.data == "admin_create_vip_link")
+async def admin_create_vip_link(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
         return
     
     try:
@@ -839,13 +935,12 @@ async def admin_create_vip_link(callback: CallbackQuery):
             expire_date=None
         )
         
-        await add_vip_link(invite_link.invite_link)
+        await add_vip_link(invite_link.invite_link, 0)
         
         await callback.message.edit_text(
-            f"✅ <b>Новая VIP ссылка создана!</b>\n\n"
+            f"✅ <b>Новая одноразовая VIP ссылка создана!</b>\n\n"
             f"🔗 {invite_link.invite_link}\n\n"
-            f"⚠️ Ссылка одноразовая (действует для 1 человека).\n"
-            f"📊 Всего создано: {len(await get_all_vip_links())}",
+            f"⚠️ Ссылка одноразовая (действует для 1 человека).",
             parse_mode="HTML",
             reply_markup=get_admin_keyboard()
         )
@@ -858,46 +953,6 @@ async def admin_create_vip_link(callback: CallbackQuery):
             reply_markup=get_admin_keyboard()
         )
     await callback.answer()
-
-@dp.callback_query(lambda c: c.data == "admin_list_vip_links")
-async def admin_list_vip_links(callback: CallbackQuery):
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔")
-        return
-    
-    links = await get_all_vip_links()
-    
-    if not links:
-        await callback.message.edit_text(
-            "📭 <b>Список VIP ссылок пуст</b>\n\n"
-            "Создайте новую ссылку через кнопку 'Создать ссылку VIP'",
-            parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
-        )
-        await callback.answer()
-        return
-    
-    text = "🔗 <b>Список VIP ссылок</b>\n\n"
-    for link in links:
-        status = "✅ Активна" if link["is_active"] else "❌ Неактивна"
-        text += f"📅 {link['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
-        text += f"🔗 {link['link']}\n"
-        text += f"📊 {status}\n"
-        text += f"🗑️ /dellink_{link['id']} - удалить\n\n"
-    
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_admin_keyboard())
-    await callback.answer()
-
-@dp.message(lambda m: m.text and m.text.startswith("/dellink_"))
-async def delete_vip_link_cmd(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    try:
-        link_id = int(message.text.split("_")[1])
-        await deactivate_vip_link(link_id)
-        await message.answer("✅ VIP ссылка деактивирована!", reply_markup=get_admin_keyboard())
-    except:
-        await message.answer("❌ Ошибка при удалении")
 
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
