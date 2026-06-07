@@ -58,7 +58,7 @@ class DepositStates(StatesGroup):
 async def start_cmd(message: Message):
     await add_user(message.from_user.id)
     await message.answer(
-        "✨ *Добро пожаловать в IceBerg Magic Cheat Shop*\n\n"
+        "✨ *Добро пожаловать в Sweg Magic Cheat Shop*\n\n"
         "Для покупки товаров используйте кнопки ниже ↓",
         parse_mode="Markdown",
         reply_markup=main_menu
