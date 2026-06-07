@@ -478,7 +478,7 @@ async def handle_buy(callback: CallbackQuery):
         )
         vip_link = invite_link.invite_link
     except:
-        vip_link = "https://t.me/+a5AssXS77w01Yjky"
+        vip_link = "https://t.me/+SRX92UXTFepjNzRi"
     
     await callback.message.answer(
         f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Покупка успешна!</b>\n\n"
