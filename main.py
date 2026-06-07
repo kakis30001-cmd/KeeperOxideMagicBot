@@ -71,7 +71,6 @@ async def back_to_main(message: Message):
         parse_mode="Markdown",
         reply_markup=main_menu
     )
-
 # ========== ИНФОРМАЦИЯ ==========
 @dp.message(lambda m: m.text == "ℹ️ Информация")
 async def info_cmd(message: Message):
@@ -83,7 +82,9 @@ async def info_cmd(message: Message):
         "• Приобретите ключ через меню\n"
         "• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         "📞 *КОНТАКТЫ:*\n"
-        "• Техподдержка: @ZOJlOTOY\n\n"
+        "• Техподдержка: @nikita1055\n"
+        "• Основной канал: @keepersell\n"
+        "• Отзывы: https://t.me/KeeperOtzivi\n\n"
         "⚖️ *ДОКУМЕНТЫ:*\n"
         "• [Политика конфиденциальности](https://telegra.ph/Politika-konfidencialnosti-04-01-26)\n"
         "• [Пользовательское соглашение](https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19)"
