@@ -634,4 +634,4 @@ async def process_broadcast(message: Message, state: FSMContext):
             success_count += 1
         except:
             fail_count += 1
-        await asyncio.sleep(0.
+        await asyncio.sleep(0.05)
