@@ -8,6 +8,3 @@ CHANNEL_ID = -1003709565134
 
 if DB_URL:
     DB_URL = DB_URL.replace("postgresql+asyncpg://", "postgresql://")
-    DB_URL = DB_URL.replace("postgresql://", "postgresql://")
-
-print("DB_URL starts with:", DB_URL[:30] if DB_URL else "None")
