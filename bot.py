@@ -68,7 +68,7 @@ def shop(message):
             markup.add(types.InlineKeyboardButton(f"{p['name']} - {p['price']}₽", callback_data=f"buy_{p['id']}"))
         bot.send_message(message.chat.id, "Выберите товар:", reply_markup=markup)
 
-# --- АДМИН-ПАНЕЛЬ (Логика добавления) ---
+# --- АДМИН-ПАНЕЛЬ ---
 @bot.message_handler(func=lambda m: m.text == "⚙️ Админ-панель" and m.from_user.id == ADMIN_ID)
 def admin_panel(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -76,16 +76,29 @@ def admin_panel(message):
     bot.send_message(message.chat.id, "Админ-панель:", reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text == "➕ Добавить товар" and m.from_user.id == ADMIN_ID)
-def add_prod(message):
-    bot.send_message(message.chat.id, "Введите название:")
-    bot.register_next_step_handler(message, lambda m: bot.send_message(message.chat.id, "Введите цену:") or bot.register_next_step_handler(m, lambda price_m: save_prod(m.text, price_m.text)))
+def add_prod_step1(message):
+    # Создаем временное состояние для этого пользователя
+    user_data[message.chat.id] = {} 
+    bot.send_message(message.chat.id, "Введите название товара:")
+    bot.register_next_step_handler(message, add_prod_step2)
 
-def save_prod(name, price):
+def add_prod_step2(message):
+    user_data[message.chat.id]['name'] = message.text
+    bot.send_message(message.chat.id, "Введите цену:")
+    bot.register_next_step_handler(message, add_prod_step3)
+
+def add_prod_step3(message):
+    name = user_data[message.chat.id]['name']
+    price = message.text
+    
+    # Сохраняем в БД
     conn = get_db()
     conn.execute("INSERT INTO products (name, price) VALUES (?, ?)", (name, int(price)))
     conn.commit()
     conn.close()
-    bot.send_message(ADMIN_ID, "✅ Товар добавлен.")
+    
+    bot.send_message(message.chat.id, f"✅ Товар <b>{name}</b> за <b>{price}₽</b> успешно добавлен!", 
+                     parse_mode="HTML", reply_markup=main_kb(message.from_user.id))
 
 # --- ВЕБХУК ---
 @app.route('/telegram_webhook', methods=['POST'])
