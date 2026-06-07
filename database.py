@@ -11,10 +11,19 @@ async def connect_db():
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS users(
             user_id BIGINT PRIMARY KEY,
-            balance INTEGER DEFAULT 0,
-            referrer_id BIGINT DEFAULT NULL
+            balance INTEGER DEFAULT 0
         )
         """)
+        
+        try:
+            await conn.execute("ALTER TABLE users ADD COLUMN referrer_id BIGINT DEFAULT NULL")
+        except Exception:
+            pass
+        
+        try:
+            await conn.execute("ALTER TABLE users ADD COLUMN ref_bonus_claimed BOOLEAN DEFAULT FALSE")
+        except Exception:
+            pass
         
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS products(
