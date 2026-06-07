@@ -14,7 +14,7 @@ from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
-    mark_key_as_used, update_user_balance
+    mark_key_as_used, update_user_balance, add_purchase
 )
 
 # ========== ИНИЦИАЛИЗАЦИЯ ==========
@@ -24,9 +24,6 @@ flask_app = Flask(__name__)
 
 # Хранилище ожидающих платежей
 pending_payments = {}
-
-# ID VIP канала
-VIP_CHANNEL_ID = -1003709565134  # Отрицательный ID для канала
 
 # ========== КЛАВИАТУРЫ ==========
 # Главное меню
@@ -47,25 +44,13 @@ profile_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Меню ввода своей суммы (только своя сумма)
-custom_amount_menu = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="💰 Ввести свою сумму", callback_data="amount_custom")]
-])
-
-# Меню выбора способа оплаты
-def get_payment_methods_menu(amount: int):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💳 СБП / Криптовалюта (Platega)", callback_data=f"payment_platega_{amount}")],
-        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_profile")]
-    ])
-
 # ========== FSM СОСТОЯНИЯ ==========
 class AddProductStates(StatesGroup):
     waiting_name = State()
     waiting_price = State()
-    waiting_keys = State()  # Новое состояние для ключей
+    waiting_keys = State()
 
-class CustomAmountStates(StatesGroup):
+class DepositStates(StatesGroup):
     waiting_amount = State()
 
 # ========== КОМАНДЫ БОТА ==========
@@ -98,9 +83,7 @@ async def info_cmd(message: Message):
         "• Приобретите ключ через меню\n"
         "• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         "📞 *КОНТАКТЫ:*\n"
-        "• Техподдержка: @nikita1055\n"
-        "• Основной канал: @keepersell\n"
-        "• Отзывы: https://t.me/KeeperOtzivi\n\n"
+        "• Техподдержка: @ZOJlOTOY\n\n"
         "⚖️ *ДОКУМЕНТЫ:*\n"
         "• [Политика конфиденциальности](https://telegra.ph/Politika-konfidencialnosti-04-01-26)\n"
         "• [Пользовательское соглашение](https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19)"
@@ -148,58 +131,69 @@ async def profile_cmd(message: Message):
 
 @dp.message(lambda m: m.text == "📋 История заказов")
 async def orders_history(message: Message):
-    # TODO: добавить вывод истории из БД
-    await message.answer(
-        "📋 *История заказов*\n\n"
-        "У вас пока нет покупок.",
-        parse_mode="Markdown"
-    )
+    purchases = await get_user_purchases(message.from_user.id)
+    
+    if not purchases:
+        await message.answer(
+            "📋 *История заказов*\n\n"
+            "У вас пока нет покупок.",
+            parse_mode="Markdown"
+        )
+        return
+    
+    history_text = "📋 *История заказов*\n\n"
+    for p in purchases:
+        history_text += f"🆔 Заказ #{p['id']}\n"
+        history_text += f"🎮 Товар: {p['name']}\n"
+        history_text += f"💰 Цена: {p['price']} ₽\n"
+        history_text += f"📅 Дата: {p['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
+        history_text += "─" * 15 + "\n"
+    
+    await message.answer(history_text, parse_mode="Markdown")
 
-# ========== ПОПОЛНЕНИЕ БАЛАНСА (ТОЛЬКО СВОЯ СУММА) ==========
+# ========== ПОПОЛНЕНИЕ БАЛАНСА (СРАЗУ ЗАПРАШИВАЕТ СУММУ) ==========
 @dp.message(lambda m: m.text == "💰 Пополнить баланс")
-async def deposit_cmd(message: Message):
+async def deposit_cmd(message: Message, state: FSMContext):
+    await state.set_state(DepositStates.waiting_amount)
     await message.answer(
         "💰 *Пополнение баланса*\n\n"
-        "Нажмите кнопку ниже, чтобы ввести сумму пополнения:",
-        parse_mode="Markdown",
-        reply_markup=custom_amount_menu
-    )
-
-@dp.callback_query(lambda c: c.data == "amount_custom")
-async def handle_custom_amount(callback: types.CallbackQuery, state: FSMContext):
-    await state.set_state(CustomAmountStates.waiting_amount)
-    await callback.message.answer(
-        "💰 Введите сумму пополнения (от 10 до 50000 ₽):\n\n"
+        "Введите сумму пополнения (от 10 до 50000 ₽):\n\n"
         "Пример: `500`",
         parse_mode="Markdown"
     )
-    await callback.answer()
 
-@dp.message(CustomAmountStates.waiting_amount)
-async def process_custom_amount(message: Message, state: FSMContext):
+@dp.message(DepositStates.waiting_amount)
+async def process_deposit_amount(message: Message, state: FSMContext):
     try:
         amount = int(message.text.strip())
         if amount < 10:
-            await message.answer("❌ Минимальная сумма пополнения: *10 ₽*", parse_mode="Markdown")
+            await message.answer("❌ Минимальная сумма пополнения: *10 ₽*\n\nВведите другую сумму:", parse_mode="Markdown")
             return
         if amount > 50000:
-            await message.answer("❌ Максимальная сумма пополнения: *50000 ₽*", parse_mode="Markdown")
+            await message.answer("❌ Максимальная сумма пополнения: *50000 ₽*\n\nВведите другую сумму:", parse_mode="Markdown")
             return
-        await show_payment_methods(message, amount)
+        
+        # Сохраняем сумму и сразу показываем способ оплаты
+        await state.update_data(amount=amount)
+        
+        payment_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💳 СБП / Криптовалюта (Platega)", callback_data=f"payment_platega_{amount}")],
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data="cancel_payment")]
+        ])
+        
+        await message.answer(
+            f"💰 *Пополнение на {amount} ₽*\n\n"
+            "Выберите способ оплаты:",
+            parse_mode="Markdown",
+            reply_markup=payment_kb
+        )
         await state.clear()
+        
     except ValueError:
-        await message.answer("❌ Введите *число*!", parse_mode="Markdown")
+        await message.answer("❌ Введите *число*!\n\nПример: `500`", parse_mode="Markdown")
 
-async def show_payment_methods(target, amount: int):
-    await target.answer(
-        f"💰 *Пополнение на {amount} ₽*\n\n"
-        "Выберите способ оплаты:",
-        parse_mode="Markdown",
-        reply_markup=get_payment_methods_menu(amount)
-    )
-
-@dp.callback_query(lambda c: c.data == "back_to_profile")
-async def back_to_profile(callback: types.CallbackQuery):
+@dp.callback_query(lambda c: c.data == "cancel_payment")
+async def cancel_payment(callback: types.CallbackQuery):
     await callback.message.delete()
     balance = await get_balance(callback.from_user.id)
     await callback.message.answer(
@@ -229,12 +223,13 @@ async def handle_platega_payment(callback: types.CallbackQuery):
     # ЗАМЕНИ НА РЕАЛЬНЫЙ API PLATEGA
     payment_url = f"https://platega.com/pay?amount={amount}&payment_id={payment_id}&user_id={user_id}"
     
-    await callback.message.answer(
+    await callback.message.edit_text(
         f"💳 *Оплата через Platega*\n\n"
         f"Сумма: `{amount} ₽`\n\n"
         f"🔗 [Нажмите для оплаты]({payment_url})\n\n"
         f"⚡ После оплаты баланс пополнится автоматически.\n\n"
-        f"🆔 ID платежа: `{payment_id}`",
+        f"🆔 ID платежа: `{payment_id}`\n\n"
+        f"Способы оплаты: СБП, Криптовалюта",
         parse_mode="Markdown",
         disable_web_page_preview=True
     )
@@ -266,10 +261,11 @@ async def handle_buy(callback: types.CallbackQuery):
     await update_user_balance(user_id, balance - product["price"])
     await mark_key_as_used(key_row["id"])
     
-    # Ссылка на VIP канал
-    vip_link = f"https://t.me/joinchat/AAAAAEAAAAAAAAAAAAAAAAAAAAA"
-    # ВНИМАНИЕ: реальную ссылку на канал нужно создать через @getmyid бота
-    # Или использовать invite link из настроек канала
+    # Записываем покупку в историю
+    await add_purchase(user_id, product_id, product["price"])
+    
+    # Ссылка на VIP канал (замени на реальную)
+    vip_link = "https://t.me/joinchat/AAAAAEAAAAAAAAAAAAAAAAAAAAA"
     
     await callback.message.answer(
         f"✅ *Покупка успешна!*\n\n"
@@ -277,14 +273,14 @@ async def handle_buy(callback: types.CallbackQuery):
         f"💰 Цена: {product['price']} ₽\n"
         f"🔑 *Ключ:* `{key_row['key_value']}`\n\n"
         f"🔗 *Ссылка на VIP канал:*\n"
-        f"[Нажмите для вступления](https://t.me/joinchat/AAAAAEAAAAAAAAAAAAAAAAAAAAA)\n\n"
+        f"[Нажмите для вступления]({vip_link})\n\n"
         f"💡 Сохраните ключ, он не будет показан снова!",
         parse_mode="Markdown",
         disable_web_page_preview=True
     )
     await callback.answer("🎉 Спасибо за покупку!")
 
-# ========== АДМИН-КОМАНДЫ (НАЗВАНИЕ → ЦЕНА → КЛЮЧИ) ==========
+# ========== АДМИН-КОМАНДЫ ==========
 @dp.message(Command("admin"))
 async def admin_cmd(message: Message):
     if message.from_user.id != ADMIN_ID:
@@ -339,17 +335,13 @@ async def product_keys(message: Message, state: FSMContext):
     name = data["name"]
     price = data["price"]
     
-    # Разбиваем ключи по строкам
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
     
     if not keys:
         await message.answer("❌ Необходимо ввести хотя бы один ключ!", parse_mode="Markdown")
         return
     
-    # Добавляем товар в БД
     product_id = await add_product(name, price)
-    
-    # Добавляем все ключи
     await add_keys_to_product(product_id, keys)
     
     await message.answer(
@@ -375,14 +367,10 @@ async def stats_cmd(message: Message):
         f"👥 Пользователей: `{stats['users']}`\n"
         f"💰 Продаж на сумму: `{stats['total_sales']} ₽`\n"
         f"🔑 Выдано ключей: `{stats['keys_sold']}`\n"
+        f"🔑 Осталось ключей: `{stats['keys_left']}`\n"
         f"📦 Товаров в продаже: `{stats['products_count']}`",
         parse_mode="Markdown"
     )
-
-# ========== ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ БД ==========
-# Эти функции нужно добавить в database.py
-# async def get_stats(): ...
-# async def add_product возвращает id
 
 # ========== FLASK ВЕБХУК ==========
 @flask_app.route("/webhook/payment", methods=["POST"])
