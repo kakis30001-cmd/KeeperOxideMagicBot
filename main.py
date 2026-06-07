@@ -12,12 +12,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL
+from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL, CHANNEL_ID
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
     mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
-    get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used, get_all_promocodes, delete_promocode
+    get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used,
+    get_all_promocodes, delete_promocode, add_vip_link, get_active_vip_link, get_all_vip_links, deactivate_vip_link
 )
 
 STICKERS = {
@@ -54,9 +55,8 @@ BUTTON_EMOJI = {
     "add_balance": "5807465992363710697",
     "broadcast": "5872771279337033184",
     "promocode": "5872771279337033184",
+    "vip_link": "5872771279337033184",
 }
-
-VIP_CHANNEL_LINK = "https://t.me/+a5AssXS77w01Yjky"
 
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
     return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
@@ -94,6 +94,9 @@ class AdminCreatePromocodeStates(StatesGroup):
 
 class ProfileActivatePromocodeStates(StatesGroup):
     waiting_code = State()
+
+class AdminVipLinkStates(StatesGroup):
+    waiting_action = State()
 
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
     return None
@@ -136,6 +139,10 @@ def get_admin_keyboard():
         [
             InlineKeyboardButton(text="Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]),
             InlineKeyboardButton(text="Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])
+        ],
+        [
+            InlineKeyboardButton(text="Создать ссылку VIP", callback_data="admin_create_vip_link", icon_custom_emoji_id=BUTTON_EMOJI["vip_link"]),
+            InlineKeyboardButton(text="Список VIP ссылок", callback_data="admin_list_vip_links", icon_custom_emoji_id=BUTTON_EMOJI["vip_link"])
         ],
         [
             InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
@@ -396,13 +403,16 @@ async def handle_buy(callback: CallbackQuery):
     async with pool.acquire() as conn:
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE product_id = $1 AND used = FALSE", product_id)
     
+    vip_link_row = await get_active_vip_link()
+    vip_link = vip_link_row["link"] if vip_link_row else "https://t.me/+a5AssXS77w01Yjky"
+    
     await callback.message.answer(
         f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Выбран товар • {product['name']}</b>\n\n"
         f"{tg_emoji(STICKERS['keys_count'], '🔑')} <b>Ключей в наличии:</b> {keys_left}\n"
         f"{tg_emoji(STICKERS['price_icon'], '💰')} <b>Цена:</b> {product['price']} ₽\n\n"
         f"{tg_emoji(STICKERS['product_selected'], '🔑')} <b>Ваш ключ:</b> <code>{key_row['key_value']}</code>\n\n"
         f"🔗 <b>Ссылка на VIP канал:</b>\n"
-        f"<a href='{VIP_CHANNEL_LINK}'>Нажмите для вступления</a>",
+        f"<a href='{vip_link}'>Нажмите для вступления</a>",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]])
@@ -800,6 +810,90 @@ async def delete_promocode_cmd(message: Message):
         promocode_id = int(message.text.split("_")[1])
         await delete_promocode(promocode_id)
         await message.answer("✅ Промокод удален!", reply_markup=get_admin_keyboard())
+    except:
+        await message.answer("❌ Ошибка при удалении")
+
+@dp.callback_query(lambda c: c.data == "admin_create_vip_link")
+async def admin_create_vip_link(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен")
+        return
+    
+    if not CHANNEL_ID:
+        await callback.message.edit_text(
+            "❌ <b>ID канала не задан!</b>\n\n"
+            "Добавьте переменную CHANNEL_ID в Railway.\n"
+            "ID канала должен быть отрицательным: -1001822487778",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    try:
+        invite_link = await bot.create_chat_invite_link(
+            chat_id=CHANNEL_ID,
+            member_limit=1,
+            expire_date=None
+        )
+        
+        await add_vip_link(invite_link.invite_link)
+        
+        await callback.message.edit_text(
+            f"✅ <b>Новая VIP ссылка создана!</b>\n\n"
+            f"🔗 {invite_link.invite_link}\n\n"
+            f"⚠️ Ссылка одноразовая (действует для 1 человека).\n"
+            f"📊 Всего создано: {len(await get_all_vip_links())}",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+    except Exception as e:
+        await callback.message.edit_text(
+            f"❌ <b>Ошибка создания ссылки</b>\n\n"
+            f"Проверьте что бот добавлен в канал админом.\n\n"
+            f"Ошибка: {str(e)[:200]}",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "admin_list_vip_links")
+async def admin_list_vip_links(callback: CallbackQuery):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔")
+        return
+    
+    links = await get_all_vip_links()
+    
+    if not links:
+        await callback.message.edit_text(
+            "📭 <b>Список VIP ссылок пуст</b>\n\n"
+            "Создайте новую ссылку через кнопку 'Создать ссылку VIP'",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    text = "🔗 <b>Список VIP ссылок</b>\n\n"
+    for link in links:
+        status = "✅ Активна" if link["is_active"] else "❌ Неактивна"
+        text += f"📅 {link['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
+        text += f"🔗 {link['link']}\n"
+        text += f"📊 {status}\n"
+        text += f"🗑️ /dellink_{link['id']} - удалить\n\n"
+    
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_admin_keyboard())
+    await callback.answer()
+
+@dp.message(lambda m: m.text and m.text.startswith("/dellink_"))
+async def delete_vip_link_cmd(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        link_id = int(message.text.split("_")[1])
+        await deactivate_vip_link(link_id)
+        await message.answer("✅ VIP ссылка деактивирована!", reply_markup=get_admin_keyboard())
     except:
         await message.answer("❌ Ошибка при удалении")
 
