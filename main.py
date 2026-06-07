@@ -2,6 +2,7 @@ import asyncio
 import os
 import uuid
 import hashlib
+from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
@@ -10,7 +11,6 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-from datetime import datetime, timedelta
 import aiohttp
 
 from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, PLATEGA_SHOP_ID, PLATEGA_SECRET_KEY
@@ -99,6 +99,17 @@ class ProfileActivatePromocodeStates(StatesGroup):
 class AdminRefBonusStates(StatesGroup):
     waiting_type = State()
     waiting_value = State()
+
+async def create_vip_link(user_id: int, days: int = 30):
+    try:
+        invite_link = await bot.create_chat_invite_link(
+            chat_id=CHANNEL_ID,
+            member_limit=1,
+            expire_date=datetime.now() + timedelta(days=days)
+        )
+        return invite_link.invite_link
+    except:
+        return None
 
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
     if not PLATEGA_SHOP_ID or not PLATEGA_SECRET_KEY:
@@ -469,15 +480,8 @@ async def handle_buy(callback: CallbackQuery):
     async with pool.acquire() as conn:
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE product_id = $1 AND used = FALSE", product_id)
     
-    try:
-        expire_date = datetime.now() + timedelta(days=30)
-        invite_link = await bot.create_chat_invite_link(
-            chat_id=CHANNEL_ID,
-            member_limit=1,
-            expire_date=expire_date
-        )
-        vip_link = invite_link.invite_link
-    except:
+    vip_link = await create_vip_link(user_id, 30)
+    if not vip_link:
         vip_link = "https://t.me/+a5AssXS77w01Yjky"
     
     await callback.message.answer(
