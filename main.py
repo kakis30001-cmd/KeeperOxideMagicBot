@@ -1,10 +1,11 @@
 import asyncio
 import os
+import uuid
 from threading import Thread
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
@@ -21,8 +22,11 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
 
+# Хранилище ожидающих платежей
+pending_payments = {}  # {user_id: {"amount": int, "payment_id": str}}
+
 # ========== КЛАВИАТУРЫ ==========
-# Главное меню (как на скрине)
+# Главное меню
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🛍 Магазин"), KeyboardButton(text="👤 Профиль")],
@@ -31,23 +35,32 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# Меню профиля
+# Меню профиля (без рефералки)
 profile_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="💰 Пополнить баланс"), KeyboardButton(text="📋 История заказов")],
-        [KeyboardButton(text="👥 Реферальная система"), KeyboardButton(text="🎟 Активировать промокод")],
         [KeyboardButton(text="🏠 Главная")]
     ],
     resize_keyboard=True
 )
 
-# Меню магазина
-shop_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🏠 Главная")]
-    ],
-    resize_keyboard=True
-)
+# Меню выбора суммы пополнения
+amount_menu = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="100 ₽", callback_data="amount_100")],
+    [InlineKeyboardButton(text="500 ₽", callback_data="amount_500")],
+    [InlineKeyboardButton(text="1000 ₽", callback_data="amount_1000")],
+    [InlineKeyboardButton(text="2000 ₽", callback_data="amount_2000")],
+    [InlineKeyboardButton(text="5000 ₽", callback_data="amount_5000")],
+    [InlineKeyboardButton(text="❌ Своя сумма", callback_data="amount_custom")]
+])
+
+# Меню выбора способа оплаты
+def get_payment_methods_menu(amount: int):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💳 СБП / Перевод на карту", callback_data=f"payment_card_{amount}")],
+        [InlineKeyboardButton(text="⭐ Telegram Stars", callback_data=f"payment_stars_{amount}")],
+        [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_amount")]
+    ])
 
 # ========== FSM СОСТОЯНИЯ ==========
 class AddProductStates(StatesGroup):
@@ -57,6 +70,9 @@ class AddProductStates(StatesGroup):
 class AddKeysStates(StatesGroup):
     waiting_product_id = State()
     waiting_keys = State()
+
+class CustomAmountStates(StatesGroup):
+    waiting_amount = State()
 
 # ========== КОМАНДЫ БОТА ==========
 @dp.message(CommandStart())
@@ -69,7 +85,6 @@ async def start_cmd(message: Message):
         reply_markup=main_menu
     )
 
-# ========== ГЛАВНОЕ МЕНЮ ==========
 @dp.message(lambda m: m.text == "🏠 Главная")
 async def back_to_main(message: Message):
     await message.answer(
@@ -85,7 +100,6 @@ async def shop_cmd(message: Message):
         await message.answer("📭 *Товаров пока нет*\n\nОжидайте пополнения ассортимента.", parse_mode="Markdown")
         return
     
-    # Создаем красивые кнопки с товарами
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🎮 {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}")]
         for p in products
@@ -113,17 +127,11 @@ async def profile_cmd(message: Message):
 
 @dp.message(lambda m: m.text == "💰 Пополнить баланс")
 async def deposit_cmd(message: Message):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="100 ₽", callback_data="deposit_100")],
-        [InlineKeyboardButton(text="500 ₽", callback_data="deposit_500")],
-        [InlineKeyboardButton(text="1000 ₽", callback_data="deposit_1000")],
-        [InlineKeyboardButton(text="5000 ₽", callback_data="deposit_5000")]
-    ])
     await message.answer(
         "💰 *Пополнение баланса*\n\n"
         "Выберите сумму пополнения:",
         parse_mode="Markdown",
-        reply_markup=kb
+        reply_markup=amount_menu
     )
 
 @dp.message(lambda m: m.text == "📋 История заказов")
@@ -135,33 +143,12 @@ async def orders_history(message: Message):
         parse_mode="Markdown"
     )
 
-@dp.message(lambda m: m.text == "👥 Реферальная система")
-async def referral_cmd(message: Message):
-    await message.answer(
-        "👥 *Реферальная система*\n\n"
-        "Приглашайте друзей и получайте бонусы!\n\n"
-        "Ваша реферальная ссылка:\n"
-        f"`https://t.me/{bot.username}?start=ref_{message.from_user.id}`\n\n"
-        "За каждого приглашенного друга вы получите 5% от его покупок!",
-        parse_mode="Markdown"
-    )
-
-@dp.message(lambda m: m.text == "🎟 Активировать промокод")
-async def promo_cmd(message: Message):
-    # TODO: добавить промокоды
-    await message.answer(
-        "🎟 *Активация промокода*\n\n"
-        "Введите промокод для активации:",
-        parse_mode="Markdown"
-    )
-
 @dp.message(lambda m: m.text == "📞 Поддержка")
 async def support_cmd(message: Message):
     await message.answer(
         "📞 *Служба поддержки*\n\n"
         "По всем вопросам обращайтесь:\n"
-        "✉ Telegram: @support_username\n"
-        "📧 Email: support@iceberg.com\n\n"
+        "✉ Telegram: @support_username\n\n"
         "Мы ответим в ближайшее время!",
         parse_mode="Markdown"
     )
@@ -178,26 +165,147 @@ async def rules_cmd(message: Message):
         parse_mode="Markdown"
     )
 
-# ========== ПОКУПКИ ==========
-@dp.callback_query(lambda c: c.data and c.data.startswith("deposit_"))
-async def handle_deposit(callback: types.CallbackQuery):
-    amount = int(callback.data.split("_")[1])
-    user_id = callback.from_user.id
+# ========== ПОПОЛНЕНИЕ БАЛАНСА (ВЫБОР СУММЫ) ==========
+@dp.callback_query(lambda c: c.data and c.data.startswith("amount_"))
+async def handle_amount_selection(callback: types.CallbackQuery, state: FSMContext):
+    amount_str = callback.data.split("_")[1]
     
-    # TODO: подключить реальную платежную систему
-    # Сейчас просто добавляем баланс для теста
-    current_balance = await get_balance(user_id)
-    await update_user_balance(user_id, current_balance + amount)
+    if amount_str == "custom":
+        await state.set_state(CustomAmountStates.waiting_amount)
+        await callback.message.answer(
+            "💰 Введите сумму пополнения (от 10 до 50000 ₽):\n\n"
+            "Пример: `500`",
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+        return
     
-    await callback.message.answer(
-        f"✅ *Баланс пополнен!*\n\n"
-        f"Сумма: `{amount} ₽`\n"
-        f"Новый баланс: `{current_balance + amount} ₽`",
+    amount = int(amount_str)
+    await show_payment_methods(callback.message, amount)
+    await callback.answer()
+
+@dp.message(CustomAmountStates.waiting_amount)
+async def process_custom_amount(message: Message, state: FSMContext):
+    try:
+        amount = int(message.text.strip())
+        if amount < 10:
+            await message.answer("❌ Минимальная сумма пополнения: *10 ₽*", parse_mode="Markdown")
+            return
+        if amount > 50000:
+            await message.answer("❌ Максимальная сумма пополнения: *50000 ₽*", parse_mode="Markdown")
+            return
+        await show_payment_methods(message, amount)
+        await state.clear()
+    except ValueError:
+        await message.answer("❌ Введите *число*!", parse_mode="Markdown")
+
+async def show_payment_methods(target, amount: int):
+    await target.answer(
+        f"💰 *Пополнение на {amount} ₽*\n\n"
+        "Выберите удобный способ оплаты:",
         parse_mode="Markdown",
-        reply_markup=profile_menu
+        reply_markup=get_payment_methods_menu(amount)
+    )
+
+@dp.callback_query(lambda c: c.data == "back_to_amount")
+async def back_to_amount(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        "💰 *Пополнение баланса*\n\nВыберите сумму пополнения:",
+        parse_mode="Markdown",
+        reply_markup=amount_menu
     )
     await callback.answer()
 
+# ========== ГЕНЕРАЦИЯ ССЫЛКИ НА ОПЛАТУ ==========
+@dp.callback_query(lambda c: c.data and c.data.startswith("payment_"))
+async def handle_payment_method(callback: types.CallbackQuery):
+    parts = callback.data.split("_")
+    method = parts[1]  # card или stars
+    amount = int(parts[2])
+    user_id = callback.from_user.id
+    
+    # Создаем уникальный ID платежа
+    payment_id = str(uuid.uuid4())
+    pending_payments[user_id] = {
+        "amount": amount,
+        "payment_id": payment_id,
+        "status": "pending"
+    }
+    
+    # ЗДЕСЬ ТЫ ПОДСТАВЛЯЕШЬ СВОЮ ПЛАТЕЖНУЮ СИСТЕМУ
+    # Пример для Platiga / Lava / FreeKassa
+    # Ссылка для оплаты формируется ТВОЕЙ платежной системой
+    
+    if method == "card":
+        # Ссылка на оплату через Platiga
+        payment_url = f"https://your-payment-system.com/create?amount={amount}&payment_id={payment_id}&user_id={user_id}"
+        await callback.message.answer(
+            f"💳 *Оплата {amount} ₽*\n\n"
+            f"Перейдите по ссылке для оплаты:\n"
+            f"🔗 [Нажмите для оплаты]({payment_url})\n\n"
+            f"⚡ После оплаты баланс пополнится автоматически в течение 1-2 минут.\n\n"
+            f"🆔 ID платежа: `{payment_id}`",
+            parse_mode="Markdown",
+            disable_web_page_preview=True
+        )
+    elif method == "stars":
+        # Telegram Stars
+        await callback.message.answer(
+            f"⭐ *Оплата через Telegram Stars*\n\n"
+            f"Сумма: {amount} ₽\n\n"
+            f"Отправьте {amount // 2} Stars боту @PremiumBot\n"
+            f"После отправки нажмите /check_{payment_id}",
+            parse_mode="Markdown"
+        )
+    
+    await callback.answer()
+
+# ========== ПРОВЕРКА ПЛАТЕЖА (ВЕБХУК ОТ ПЛАТЕЖНОЙ СИСТЕМЫ) ==========
+@flask_app.route("/webhook/payment", methods=["POST"])
+def payment_webhook():
+    """
+    Сюда платежная система присылает уведомление об успешной оплате.
+    Формат данных зависит от твоей платежной системы.
+    """
+    data = request.get_json()
+    
+    # ПРИМЕР для Platiga / Lava / FreeKassa
+    # Адаптируй под свою платежку
+    
+    payment_id = data.get("payment_id")
+    user_id = data.get("user_id")
+    amount = data.get("amount")
+    status = data.get("status")
+    
+    if status == "success" and user_id and amount:
+        # Обновляем баланс пользователя
+        async def update_balance():
+            current = await get_balance(user_id)
+            await update_user_balance(user_id, current + amount)
+            # Отправляем уведомление пользователю
+            await bot.send_message(
+                user_id,
+                f"✅ *Баланс пополнен!*\n\n"
+                f"Сумма: `{amount} ₽`\n"
+                f"Новый баланс: `{current + amount} ₽`",
+                parse_mode="Markdown"
+            )
+        
+        asyncio.run(update_balance())
+        
+        # Удаляем запись о pending платеже
+        if user_id in pending_payments:
+            del pending_payments[user_id]
+        
+        return jsonify({"status": "ok"}), 200
+    
+    return jsonify({"status": "error", "message": "Invalid data"}), 400
+
+@flask_app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "alive"}), 200
+
+# ========== ПОКУПКИ ==========
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: types.CallbackQuery):
     product_id = int(callback.data.split("_")[1])
@@ -340,22 +448,12 @@ async def stats_cmd(message: Message):
         parse_mode="Markdown"
     )
 
-# ========== FLASK ДЛЯ ПЛАТЕЖЕЙ ==========
-@flask_app.route("/webhook/payment", methods=["POST"])
-def payment_webhook():
-    data = request.get_json()
-    # TODO: подключить реальную платежную систему
-    return jsonify({"status": "ok"}), 200
-
-@flask_app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "alive"}), 200
-
+# ========== ЗАПУСК FLASK ==========
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
 
-# ========== ЗАПУСК ==========
+# ========== ЗАПУСК БОТА ==========
 async def main():
     await connect_db()
     await bot.delete_webhook(drop_pending_updates=True)
