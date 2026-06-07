@@ -16,7 +16,8 @@ from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL, PLATEGA_SHOP_ID, PL
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
-    mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats
+    mark_key_as_used, update_user_balance, add_purchase, get_user_purchases, get_stats,
+    get_all_users, add_balance_by_admin
 )
 
 STICKERS = {
@@ -50,6 +51,8 @@ BUTTON_EMOJI = {
     "add_product": "5983399041197675256",
     "add_keys": "6005570495603282482",
     "stats": "5807499888245612254",
+    "add_balance": "5807465992363710697",
+    "broadcast": "5872771279337033184",
 }
 
 def tg_emoji(sticker_id: str, fallback: str = "") -> str:
@@ -72,6 +75,13 @@ class AddKeysStates(StatesGroup):
 
 class DepositStates(StatesGroup):
     waiting_amount = State()
+
+class AdminAddBalanceStates(StatesGroup):
+    waiting_user_id = State()
+    waiting_amount = State()
+
+class AdminBroadcastStates(StatesGroup):
+    waiting_message = State()
 
 async def create_platega_payment(amount: int, payment_id: str, user_id: int) -> str:
     url = "https://platega.com/api/v1/payment"
@@ -125,6 +135,10 @@ def get_admin_keyboard():
         [
             InlineKeyboardButton(text="Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=BUTTON_EMOJI["add_product"]),
             InlineKeyboardButton(text="Добавить ключи", callback_data="admin_add_keys", icon_custom_emoji_id=BUTTON_EMOJI["add_keys"])
+        ],
+        [
+            InlineKeyboardButton(text="Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=BUTTON_EMOJI["add_balance"]),
+            InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=BUTTON_EMOJI["broadcast"])
         ],
         [
             InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
@@ -236,7 +250,7 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
     await state.set_state(DepositStates.waiting_amount)
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['enter_amount'], '💰')} <b>Укажите сумму пополнения баланса</b>\n\n"
-        f"Введите сумму от 10 до 50000 ₽\nПример: <code>500</code>\n\n"
+        f"Введите сумму от 10 до 50000 ₽\n\nПример: <code>500</code>\n\n"
         f"Отправьте число в этот чат",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
@@ -249,7 +263,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         amount = int(message.text.strip())
         if amount < 10 or amount > 50000:
             await message.answer(
-                f"{tg_emoji(STICKERS['keys_count'], '❌')} Сумма от 10 до 50000",
+                f"{tg_emoji(STICKERS['keys_count'], '❌')} Сумма должна быть от 10 до 50000 ₽\n\nПопробуйте снова:",
                 parse_mode="HTML"
             )
             return
@@ -288,7 +302,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
     except ValueError:
         await message.answer(
-            f"{tg_emoji(STICKERS['keys_count'], '❌')} Введите <b>число</b>!\nПример: <code>500</code>",
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} Введите <b>число</b>!\n\nПример: <code>500</code>",
             parse_mode="HTML"
         )
 
@@ -300,17 +314,17 @@ async def handle_buy(callback: CallbackQuery):
     products = await get_all_products()
     product = next((p for p in products if p["id"] == product_id), None)
     if not product:
-        await callback.answer("❌ Товар не найден")
+        await callback.answer("Товар не найден")
         return
     
     balance = await get_balance(user_id)
     if balance < product["price"]:
-        await callback.answer(f"❌ Недостаточно средств! Нужно {product['price']} ₽")
+        await callback.answer(f"Недостаточно средств! Нужно {product['price']} ₽")
         return
     
     key_row = await get_unused_key(product_id)
     if not key_row:
-        await callback.answer("❌ Ключи закончились")
+        await callback.answer("Ключи закончились")
         return
     
     await update_user_balance(user_id, balance - product["price"])
@@ -335,7 +349,7 @@ async def handle_buy(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]])
     )
     await callback.message.delete()
-    await callback.answer("✅ Покупка успешна!")
+    await callback.answer("Покупка успешна!")
 
 @dp.message(Command("admin"))
 async def admin_cmd(message: Message):
@@ -445,6 +459,128 @@ async def process_keys_only(message: Message, state: FSMContext):
     await add_keys_to_product(product_id, keys)
     await message.answer(
         f"✅ Добавлено {len(keys)} ключей для товара ID {product_id}",
+        reply_markup=get_admin_keyboard()
+    )
+    await state.clear()
+
+@dp.callback_query(lambda c: c.data == "admin_add_balance")
+async def admin_add_balance(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен")
+        return
+    await state.set_state(AdminAddBalanceStates.waiting_user_id)
+    await callback.message.edit_text(
+        "💰 <b>Выдача баланса пользователю</b>\n\n"
+        "Введите ID пользователя Telegram:\n\n"
+        "Пример: <code>123456789</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    )
+    await callback.answer()
+
+@dp.message(AdminAddBalanceStates.waiting_user_id)
+async def process_add_balance_user_id(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        user_id = int(message.text.strip())
+        await state.update_data(user_id=user_id)
+        await state.set_state(AdminAddBalanceStates.waiting_amount)
+        await message.answer(
+            "💰 Введите сумму для начисления на баланс:\n\n"
+            "Пример: <code>500</code>",
+            parse_mode="HTML"
+        )
+    except ValueError:
+        await message.answer("❌ Неверный ID. Введите число.")
+
+@dp.message(AdminAddBalanceStates.waiting_amount)
+async def process_add_balance_amount(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    try:
+        amount = int(message.text.strip())
+        if amount <= 0:
+            await message.answer("❌ Сумма должна быть больше 0")
+            return
+        
+        data = await state.get_data()
+        user_id = data["user_id"]
+        
+        current_balance = await get_balance(user_id)
+        await update_user_balance(user_id, current_balance + amount)
+        
+        await message.answer(
+            f"✅ <b>Баланс успешно выдан!</b>\n\n"
+            f"👤 Пользователь: <code>{user_id}</code>\n"
+            f"💰 Сумма: <code>{amount} ₽</code>\n"
+            f"📊 Новый баланс: <code>{current_balance + amount} ₽</code>",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard()
+        )
+        
+        await bot.send_message(
+            user_id,
+            f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Баланс пополнен администратором!</b>\n\n"
+            f"💰 Сумма: <code>{amount} ₽</code>\n"
+            f"📊 Новый баланс: <code>{current_balance + amount} ₽</code>",
+            parse_mode="HTML"
+        )
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите число")
+
+@dp.callback_query(lambda c: c.data == "admin_broadcast")
+async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        await callback.answer("⛔ Доступ запрещен")
+        return
+    await state.set_state(AdminBroadcastStates.waiting_message)
+    await callback.message.edit_text(
+        "📢 <b>Рассылка сообщения</b>\n\n"
+        "Введите текст сообщения для рассылки всем пользователям:\n\n"
+        "Поддерживается HTML разметка",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    )
+    await callback.answer()
+
+@dp.message(AdminBroadcastStates.waiting_message)
+async def process_broadcast(message: Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    broadcast_text = message.text
+    users = await get_all_users()
+    
+    await message.answer(
+        f"📢 <b>Начинаю рассылку...</b>\n\n"
+        f"👥 Всего пользователей: <code>{len(users)}</code>",
+        parse_mode="HTML"
+    )
+    
+    success_count = 0
+    fail_count = 0
+    
+    for user in users:
+        try:
+            await bot.send_message(
+                user["user_id"],
+                f"{tg_emoji(STICKERS['magic'], '📢')} <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
+                parse_mode="HTML"
+            )
+            success_count += 1
+        except:
+            fail_count += 1
+        await asyncio.sleep(0.05)
+    
+    await message.answer(
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"✅ Доставлено: <code>{success_count}</code>\n"
+        f"❌ Не доставлено: <code>{fail_count}</code>",
+        parse_mode="HTML",
         reply_markup=get_admin_keyboard()
     )
     await state.clear()
