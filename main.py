@@ -12,7 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL, CHANNEL_ID
+from config import BOT_TOKEN, ADMIN_ID, DB_URL, RAILWAY_URL
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
