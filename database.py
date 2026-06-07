@@ -76,6 +76,11 @@ async def connect_db():
         await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
         """)
+        
+        try:
+            await conn.execute("ALTER TABLE users ADD COLUMN has_purchased BOOLEAN DEFAULT FALSE")
+        except:
+            pass
 
 async def add_user(user_id: int, referrer_id: int = None):
     async with pool.acquire() as conn:
