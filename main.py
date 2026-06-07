@@ -10,6 +10,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from datetime import datetime, timedelta
 import aiohttp
 
 from config import BOT_TOKEN, ADMIN_ID, RAILWAY_URL, CHANNEL_ID, PLATEGA_SHOP_ID, PLATEGA_SECRET_KEY
@@ -469,14 +470,17 @@ async def handle_buy(callback: CallbackQuery):
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE product_id = $1 AND used = FALSE", product_id)
     
     try:
+        expire_date = datetime.now() + timedelta(days=30)
         invite_link = await bot.create_chat_invite_link(
             chat_id=CHANNEL_ID,
             member_limit=1,
-            expire_date=None
+            expire_date=expire_date
         )
         vip_link = invite_link.invite_link
     except:
         vip_link = "https://t.me/+a5AssXS77w01Yjky"
+    
+    await callback.message.answer(
     
     await callback.message.answer(
         f"{tg_emoji(STICKERS['product_selected'], '✅')} <b>Покупка успешна!</b>\n\n"
