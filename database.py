@@ -1,127 +1,16 @@
-import asyncpg
-from config import DB_URL
+# Добавь в конец database.py
 
-pool = None
-async def connect_db():
-    global pool
-
-    pool = await asyncpg.create_pool(DB_URL, min_size=1, max_size=5)
-
-    async with pool.acquire() as conn:
-        # ПРИНУДИТЕЛЬНОЕ УДАЛЕНИЕ СТАРЫХ ТАБЛИЦ (только для первого запуска!)
-        await conn.execute("DROP TABLE IF EXISTS purchases CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS keys_store CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS products CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS users CASCADE")
-        
-        # Создаём заново
-        await conn.execute("""
-        CREATE TABLE users (
-            user_id BIGINT PRIMARY KEY,
-            balance INTEGER DEFAULT 0
-        )
-        """)
-        
-        await conn.execute("""
-        CREATE TABLE products (
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            price INTEGER NOT NULL
-        )
-        """)
-        
-        await conn.execute("""
-        CREATE TABLE keys_store (
-            id SERIAL PRIMARY KEY,
-            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-            key_value TEXT NOT NULL,
-            used BOOLEAN DEFAULT FALSE
-        )
-        """)
-        
-        await conn.execute("""
-        CREATE TABLE purchases (
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
-            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-            price INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-        """)
-
-    async with pool.acquire() as conn:
-        # Таблица users — user_id как PRIMARY KEY
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS users(
-            user_id BIGINT PRIMARY KEY,
-            balance INTEGER DEFAULT 0
-        )
-        """)
-
-        # Таблица products — id SERIAL (автоинкремент)
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS products(
-            id SERIAL PRIMARY KEY,
-            name TEXT NOT NULL,
-            price INTEGER NOT NULL
-        )
-        """)
-
-        # Таблица keys_store
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS keys_store(
-            id SERIAL PRIMARY KEY,
-            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-            key_value TEXT NOT NULL,
-            used BOOLEAN DEFAULT FALSE
-        )
-        """)
-
-        # Таблица purchases
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS purchases(
-            id SERIAL PRIMARY KEY,
-            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
-            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-            price INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-        """)
-
-async def add_user(user_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING",
-            user_id
-        )
-
-async def get_balance(user_id: int) -> int:
+async def add_product(name: str, price: int) -> int:
+    """Добавляет товар и возвращает его ID"""
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT balance FROM users WHERE user_id = $1",
-            user_id
-        )
-        return row["balance"] if row else 0
-
-async def update_user_balance(user_id: int, new_balance: int):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE users SET balance = $1 WHERE user_id = $2",
-            new_balance, user_id
-        )
-
-async def get_all_products():
-    async with pool.acquire() as conn:
-        return await conn.fetch("SELECT id, name, price FROM products ORDER BY id")
-
-async def add_product(name: str, price: int):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO products (name, price) VALUES ($1, $2)",
+            "INSERT INTO products (name, price) VALUES ($1, $2) RETURNING id",
             name, price
         )
+        return row["id"]
 
 async def add_keys_to_product(product_id: int, keys_list: list):
+    """Добавляет несколько ключей для товара"""
     async with pool.acquire() as conn:
         for key in keys_list:
             if key.strip():
@@ -130,16 +19,17 @@ async def add_keys_to_product(product_id: int, keys_list: list):
                     product_id, key.strip()
                 )
 
-async def get_unused_key(product_id: int):
+async def get_stats():
+    """Возвращает статистику"""
     async with pool.acquire() as conn:
-        return await conn.fetchrow(
-            "SELECT id, key_value FROM keys_store WHERE product_id = $1 AND used = FALSE LIMIT 1",
-            product_id
-        )
-
-async def mark_key_as_used(key_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE keys_store SET used = TRUE WHERE id = $1",
-            key_id
-        )
+        users = await conn.fetchval("SELECT COUNT(*) FROM users")
+        total_sales = await conn.fetchval("SELECT COALESCE(SUM(price), 0) FROM purchases")
+        keys_sold = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE used = TRUE")
+        products_count = await conn.fetchval("SELECT COUNT(*) FROM products")
+        
+        return {
+            "users": users,
+            "total_sales": total_sales,
+            "keys_sold": keys_sold,
+            "products_count": products_count
+        }
