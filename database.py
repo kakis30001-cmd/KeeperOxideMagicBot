@@ -105,3 +105,12 @@ async def update_user_balance(user_id: int, new_balance: int):
             "UPDATE users SET balance = $1 WHERE user_id = $2",
             new_balance, user_id
         )
+
+# Добавь в конец database.py:
+
+async def update_user_balance(user_id: int, new_balance: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET balance = $1 WHERE user_id = $2",
+            new_balance, user_id
+        )
