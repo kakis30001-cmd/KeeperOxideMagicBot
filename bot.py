@@ -1,90 +1,93 @@
 import os
-import sqlite3
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from telebot import types
 from flask import Flask, request
+import sqlite3
 
+# --- Инициализация ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", 0))
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Работа с SQLite (на Railway лучше создать базу в /tmp/shop.db или использовать Postgre)
-conn = sqlite3.connect('shop.db', check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)')
-cursor.execute('CREATE TABLE IF NOT EXISTS keys (id INTEGER PRIMARY KEY, prod_id INTEGER, key_text TEXT)')
-conn.commit()
-
-user_states = {}
+# --- База данных (упростил до надежного формата) ---
+def get_db():
+    conn = sqlite3.connect('shop.db', check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # --- КЛАВИАТУРЫ ---
-def main_markup():
-    markup = ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🏪 Магазин", "👤 Профиль")
+def main_kb():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("🏪 Магазин", "👤 Профиль")
     return markup
 
-def back_markup():
-    markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
+def admin_kb():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("➕ Добавить товар", "🎟 Добавить промокод")
+    markup.row("🔙 Назад в меню")
     return markup
 
-# --- АДМИНКА ---
+# --- ОБРАБОТЧИКИ ---
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    bot.send_message(message.chat.id, "Добро пожаловать! Выберите раздел:", reply_markup=main_kb())
+
 @bot.message_handler(commands=['admin'])
-def admin_cmd(message):
+def admin_menu(message):
     if message.from_user.id == ADMIN_ID:
-        markup = ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add("➕ Добавить товар", "🔙 Назад")
-        bot.send_message(message.chat.id, "Админ-панель открыта", reply_markup=markup)
+        bot.send_message(message.chat.id, "Админ-панель:", reply_markup=admin_kb())
+    else:
+        bot.send_message(message.chat.id, "Доступ запрещен.")
 
-@bot.message_handler(func=lambda message: message.text == "➕ Добавить товар" and message.from_user.id == ADMIN_ID)
-def add_prod(message):
-    user_states[message.from_user.id] = "wait_name"
-    bot.send_message(message.chat.id, "Введите название товара:")
-
-@bot.message_handler(func=lambda message: user_states.get(message.from_user.id) == "wait_name")
-def get_name(message):
-    user_states[message.from_user.id] = {"name": message.text, "state": "wait_price"}
-    bot.send_message(message.chat.id, "Введите цену:")
-
-@bot.message_handler(func=lambda message: isinstance(user_states.get(message.from_user.id), dict))
-def get_price(message):
-    data = user_states.pop(message.from_user.id)
-    cursor.execute("INSERT INTO products (name, price) VALUES (?, ?)", (data['name'], int(message.text)))
-    conn.commit()
-    bot.send_message(message.chat.id, "✅ Товар добавлен!")
-
-# --- МАГАЗИН И ОБРАБОТКА ---
-@bot.message_handler(func=lambda message: message.text == "🏪 Магазин")
+@bot.message_handler(func=lambda m: m.text == "🏪 Магазин")
 def shop(message):
-    cursor.execute("SELECT id, name, price FROM products")
-    products = cursor.fetchall()
+    conn = get_db()
+    products = conn.execute("SELECT * FROM products").fetchall()
+    
     if not products:
-        bot.send_message(message.chat.id, "📦 В магазине пока пусто.", reply_markup=back_markup())
-        return
-    
-    markup = InlineKeyboardMarkup()
-    for p in products:
-        markup.add(InlineKeyboardButton(f"{p[1]} - {p[2]}₽", callback_data=f"buy_{p[0]}"))
-    markup.add(InlineKeyboardButton("🔙 Назад", callback_data="main_menu"))
-    bot.send_message(message.chat.id, "Выберите товар:", reply_markup=markup)
+        bot.send_message(message.chat.id, "В магазине пусто.")
+    else:
+        markup = types.InlineKeyboardMarkup()
+        for p in products:
+            markup.add(types.InlineKeyboardButton(f"{p['name']} - {p['price']}₽", callback_data=f"buy_{p['id']}"))
+        bot.send_message(message.chat.id, "Наши товары:", reply_markup=markup)
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
-    if call.data == "main_menu":
-        bot.edit_message_text("Возвращаю в меню...", call.message.chat.id, call.message.message_id)
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-        bot.send_message(call.message.chat.id, "Главное меню:", reply_markup=main_markup())
-    
-    elif call.data.startswith("buy_"):
-        prod_id = call.data.split("_")[1]
-        bot.answer_callback_query(call.id, "Вы выбрали товар!")
-        # Тут логика оплаты
+@bot.message_handler(func=lambda m: m.text == "🔙 Назад в меню")
+def back(message):
+    bot.send_message(message.chat.id, "Главное меню:", reply_markup=main_kb())
 
+# --- АДМИН ЛОГИКА (Добавление товара) ---
+user_data = {}
+
+@bot.message_handler(func=lambda m: m.text == "➕ Добавить товар" and m.from_user.id == ADMIN_ID)
+def add_prod(message):
+    bot.send_message(message.chat.id, "Введите название товара:")
+    bot.register_next_step_handler(message, process_name)
+
+def process_name(message):
+    user_data[message.chat.id] = {'name': message.text}
+    bot.send_message(message.chat.id, "Теперь введите цену:")
+    bot.register_next_step_handler(message, process_price)
+
+def process_price(message):
+    conn = get_db()
+    conn.execute("INSERT INTO products (name, price) VALUES (?, ?)", (user_data[message.chat.id]['name'], message.text))
+    conn.commit()
+    bot.send_message(message.chat.id, "✅ Товар добавлен!", reply_markup=admin_kb())
+
+# --- ВЕБХУК ---
 @app.route('/telegram_webhook', methods=['POST'])
 def webhook():
-    bot.process_new_updates([telebot.types.Update.de_json(request.get_data().decode('utf-8'))])
-    return "OK", 200
+    json_str = request.get_data().decode('UTF-8')
+    update = types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return '!', 200
 
 if __name__ == '__main__':
+    # Инициализация таблиц
+    conn = get_db()
+    conn.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)")
+    conn.close()
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))
