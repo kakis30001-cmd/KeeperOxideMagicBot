@@ -3,7 +3,9 @@ from sqlalchemy import BigInteger, String, Boolean, ForeignKey, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.ext.asyncio import AsyncAttrs, async_sessionmaker, create_async_engine
 
-engine = create_async_engine(os.getenv('DATABASE_URL'), echo=False)
+# Здесь мы берем имя переменной точно такое же, как у тебя в Railway
+url = os.getenv('DB_URL') or 'sqlite+aiosqlite:///db.sqlite3'
+engine = create_async_engine(url, echo=False)
 async_session = async_sessionmaker(engine)
 
 class Base(AsyncAttrs, DeclarativeBase):
@@ -23,7 +25,7 @@ class Product(Base):
 class Key(Base):
     __tablename__ = 'keys'
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    product_id: Mapped[str] = mapped_column(String(50))
+    product_id: Mapped[str] = mapped_column(String(50), ForeignKey('products.id'))
     key_code: Mapped[str] = mapped_column(String(255))
     is_sold: Mapped[bool] = mapped_column(Boolean, default=False)
 
