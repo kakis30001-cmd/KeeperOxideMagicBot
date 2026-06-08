@@ -73,7 +73,6 @@ async def connect_db():
         )
         """)
         
-        # Таблица для системных настроек (Переключатель Авто/Кастом и Текст)
         await conn.execute("""
         CREATE TABLE IF NOT EXISTS bot_settings(
             key TEXT PRIMARY KEY,
@@ -82,13 +81,24 @@ async def connect_db():
         """)
         
         await conn.execute("""
+        CREATE TABLE IF NOT EXISTS manual_orders(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+        
+        await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
         """)
         
-        # Настройки магазина по умолчанию
         await conn.execute("""
         INSERT INTO bot_settings (key, value) VALUES ('shop_mode', 'auto') ON CONFLICT (key) DO NOTHING
         """)
+        
         await conn.execute("""
         INSERT INTO bot_settings (key, value) VALUES ('custom_text', '⏳ Автоматические продажи временно отключены. Пожалуйста, напишите администратору @nikita1055 для ручной покупки ключа.') ON CONFLICT (key) DO NOTHING
         """)
@@ -248,3 +258,27 @@ async def get_all_promocodes():
 async def delete_promocode(promocode_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
+
+async def create_manual_order(user_id: int, product_id: int, amount: int) -> int:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "INSERT INTO manual_orders (user_id, product_id, amount) VALUES ($1, $2, $3) RETURNING id",
+            user_id, product_id, amount
+        )
+        return row["id"]
+
+async def get_manual_order(order_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT * FROM manual_orders WHERE id = $1", order_id)
+
+async def update_manual_order_status(order_id: int, status: str):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE manual_orders SET status = $1 WHERE id = $2", status, order_id)
+
+async def get_pending_manual_orders():
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            "SELECT mo.*, p.name as product_name FROM manual_orders mo "
+            "JOIN products p ON mo.product_id = p.id "
+            "WHERE mo.status = 'pending' ORDER BY mo.created_at DESC"
+        )
