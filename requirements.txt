@@ -5,3 +5,4 @@ Flask==3.0.3
 aiohttp==3.9.5
 requests==2.31.0
 httpx[http2]
+PySOCKS
