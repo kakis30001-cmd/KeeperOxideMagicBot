@@ -373,10 +373,6 @@ def crypto_webhook():
         print(f"Ошибка вебхука: {e}")
         return jsonify({"ok": False}), 500
 
-@flask_app.route("/payment_success", methods=["GET"])
-def payment_success():
-    return "Оплата прошла успешно! Можете вернуться в бота.", 200
-
 @dp.callback_query(lambda c: c.data == "menu_info")
 async def menu_info(callback: CallbackQuery):
     info_text = (
