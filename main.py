@@ -133,18 +133,8 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    # Прописываем один из официальных IP-адресов Cloudflare, где висит CryptoBot
-    ip_address = "104.26.10.154" 
-    domain = "pay.cryptobot.net"
-    
-    # URL шлюза теперь идет строго по IP
-    url = f"https://{ip_address}/api/createInvoice"
-    
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Host": domain  # Говорим Cloudflare, какой именно сайт мы вызываем
-    }
-    
+    url = "https://pay.cryptobot.net/api/createInvoice"
+    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
@@ -153,16 +143,16 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Полный обход DNS хостинга. Стучимся напрямую на IP {ip_address}...", flush=True)
+    print(f"[CryptoBot] Запрос через DNS Google (8.8.8.8) с поддержкой aiodns...", flush=True)
     
     try:
-        # Включаем SSL, но через server_hostname принудительно сопоставляем IP и домен сертификата
-        connector = aiohttp.TCPConnector(ssl=True)
+        # Теперь, когда библиотека aiodns прописана в requirements.txt, этот кусок сработает идеально!
+        resolver = aiohttp.AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+        connector = aiohttp.TCPConnector(resolver=resolver, ssl=True)
         
         async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
-            # server_hostname=domain спасает от ошибки SSLV3_ALERT_HANDSHAKE_FAILURE
-            async with session.post(url, headers=headers, json=payload, server_hostname=domain) as resp:
-                print(f"[CryptoBot] Ответ получен! Статус-код: {resp.status}", flush=True)
+            async with session.post(url, headers=headers, json=payload) as resp:
+                print(f"[CryptoBot] Статус ответа: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
@@ -171,12 +161,9 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                         print(f"[CryptoBot] Ошибка API: {data}", flush=True)
                 else:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
-                    
     except Exception as e:
-        print(f"[CryptoBot] Ошибка при прямом хаке IP: {e}", flush=True)
-        
+        print(f"[CryptoBot] Ошибка DNS-запроса: {e}", flush=True)
     return None
-
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
