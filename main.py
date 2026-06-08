@@ -142,12 +142,14 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
                         return data["result"]["pay_url"]
+                else:
+                    print(f"CryptoBot вернул статус {resp.status}: {await resp.text()}")
     except Exception as e:
         print(f"Ошибка создания крипто-счета: {e}")
     return None
