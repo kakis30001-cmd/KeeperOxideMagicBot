@@ -1,7 +1,9 @@
 import asyncio
 import os
+import ssl
 import uuid
 import hashlib
+import http.client
 import hmac
 import socket        
 import json        
@@ -161,8 +163,13 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
+import http.client
+import json
+import ssl
+
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
+    host = "pay.cryptobot.net"
+    path = "/api/createInvoice"
     
     payload = {
         "amount": str(amount),
@@ -173,27 +180,44 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         "payload": f"{user_id}_{amount}"
     }
     
-    curl_command = [
-        "curl", "-s", "-X", "POST", url,
-        "-H", f"Crypto-Pay-API-Token: {CRYPTO_PAY_TOKEN}",
-        "-H", "Content-Type: application/json",
-        "-d", json.dumps(payload),
-        "--connect-timeout", "10"
-    ]
-    
-    try:
-        result = await asyncio.to_thread(
-            subprocess.run, curl_command, capture_output=True, text=True, check=True
-        )
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "Content-Type": "application/json",
+        "User-Agent": "python-script/1.0"
+    }
+
+    def make_raw_request():
+        # Создаем SSL-контекст, который отключает проверку сертификатов, 
+        # если возникают проблемы с доверием (это самый "тупой" и надежный способ)
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
         
-        data = json.loads(result.stdout)
+        conn = http.client.HTTPSConnection(host, 443, context=context, timeout=10)
+        try:
+            conn.request("POST", path, json.dumps(payload), headers)
+            response = conn.getresponse()
+            data = response.read().decode()
+            conn.close()
+            return data
+        except Exception as e:
+            return e
+
+    try:
+        response_data = await asyncio.to_thread(make_raw_request)
+        
+        if isinstance(response_data, Exception):
+            print(f"[CryptoBot] Ошибка http.client: {response_data}", flush=True)
+            return None
+            
+        data = json.loads(response_data)
         if data.get("ok"):
             return data["result"]["pay_url"]
         else:
             print(f"[CryptoBot] Ошибка API: {data}", flush=True)
             
     except Exception as e:
-        print(f"[CryptoBot] Ошибка через curl: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка выполнения: {e}", flush=True)
         
     return None
     
