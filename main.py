@@ -132,13 +132,8 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    url = "https://104.26.11.154/api/createInvoice"
-    
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Host": "pay.cryptobot.net"
-    }
-    
+    url = "https://pay.cryptobot.net/api/createInvoice"
+    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
@@ -147,10 +142,12 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Жёсткий обход DNS. Запрос на IP Cloudflare для заказа {order_id}...", flush=True)
+    print(f"[CryptoBot] Запрос через выделенный DNS Google (8.8.8.8) для заказа {order_id}...", flush=True)
     
     try:
-        connector = aiohttp.TCPConnector(ssl=False)
+        resolver = aiohttp.AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
+        connector = aiohttp.TCPConnector(resolver=resolver, ssl=True)
+        
         async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
                 print(f"[CryptoBot] Ответ получен! Статус-код: {resp.status}", flush=True)
@@ -163,7 +160,7 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                 else:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
     except Exception as e:
-        print(f"[CryptoBot] Ошибка даже при обходе DNS: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка при запросе с кастомным DNS: {e}", flush=True)
     return None
 
 def get_main_keyboard():
