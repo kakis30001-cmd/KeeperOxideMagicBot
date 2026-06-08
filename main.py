@@ -30,83 +30,10 @@ from database import (
     get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_paid_referrals_count,
     get_referral_config, update_referral_config, add_balance, get_product_by_id,
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
-    get_setting, update_setting
+    get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders
 )
 
-YOUR_SITE_URL = RAILWAY_URL
-
 _orig_getaddrinfo = socket.getaddrinfo
-
-CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
-
-def convert_rub_to_usdt(rub_amount, usdt_rate=100):
-    return round(rub_amount / usdt_rate, 2)
-
-def create_crypto_invoice(amount_usd, order_id, user_id):
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTOBOT_TOKEN,
-        "Content-Type": "application/json"
-    }
-    
-    data = {
-        "asset": "USDT",
-        "amount": str(amount_usd),
-        "description": f"Пополнение баланса #{order_id}",
-        "payload": f"user_{user_id}_{order_id}"
-    }
-    
-    try:
-        response = requests.post(
-            f"{CRYPTOBOT_API_URL}/createInvoice",
-            headers=headers,
-            json=data,
-            timeout=30
-        )
-        
-        print(f"[CryptoBot] Статус: {response.status_code}")
-        print(f"[CryptoBot] Ответ: {response.text}")
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("ok"):
-                invoice = result.get("result")
-                return {
-                    "success": True,
-                    "payment_url": invoice.get("pay_url"),
-                    "invoice_id": str(invoice.get("invoice_id")),
-                    "status": invoice.get("status")
-                }
-        return {"success": False, "error": f"Ошибка {response.status_code}: {response.text}"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-def check_crypto_payment(invoice_id):
-    headers = {"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN}
-    
-    try:
-        response = requests.get(
-            f"{CRYPTOBOT_API_URL}/getInvoices",
-            headers=headers,
-            params={"invoice_ids": invoice_id},
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            if result.get("ok"):
-                invoices = result.get("result", {}).get("items", [])
-                if invoices:
-                    status = invoices[0].get("status")
-                    if status == "paid":
-                        return "paid"
-                    elif status == "active":
-                        return "pending"
-                    else:
-                        return status
-        return None
-    except Exception as e:
-        print(f"Ошибка проверки: {e}")
-        return None
 
 def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if host == "pay.cryptobot.net":
@@ -215,7 +142,61 @@ class AdminRefBonusStates(StatesGroup):
     waiting_value = State()
 
 class AdminCustomTextStates(StatesGroup):
-    waiting_text = State() 
+    waiting_text = State()
+
+async def get_usdt_rate() -> float:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=rub") as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    rate = float(data["tether"]["rub"])
+                    print(f"[Курс] USDT/RUB: {rate}")
+                    return rate
+    except:
+        pass
+    print("[Курс] Запасной курс: 72 RUB за USDT")
+    return 72.0
+
+CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
+
+def create_crypto_invoice(amount_usd, order_id, user_id):
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTOBOT_TOKEN,
+        "Content-Type": "application/json"
+    }
+    
+    data = {
+        "asset": "USDT",
+        "amount": str(amount_usd),
+        "description": f"Пополнение баланса #{order_id}",
+        "payload": f"user_{user_id}_{order_id}"
+    }
+    
+    try:
+        response = requests.post(
+            f"{CRYPTOBOT_API_URL}/createInvoice",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        print(f"[CryptoBot] Статус: {response.status_code}")
+        print(f"[CryptoBot] Ответ: {response.text}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("ok"):
+                invoice = result.get("result")
+                return {
+                    "success": True,
+                    "payment_url": invoice.get("pay_url"),
+                    "invoice_id": str(invoice.get("invoice_id")),
+                    "status": invoice.get("status")
+                }
+        return {"success": False, "error": f"Ошибка {response.status_code}: {response.text}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 async def create_vip_link(user_id: int, days: int = 30):
     try:
@@ -228,32 +209,22 @@ async def create_vip_link(user_id: int, days: int = 30):
     except:
         return None
 
-async def get_usdt_rate() -> float:
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://api.binance.com/api/v3/ticker/price?symbol=USDTRUB") as resp:
-                data = await resp.json()
-                return float(data["price"])
-    except:
-        try:
-            async with session.get("https://min-api.cryptocompare.com/data/price?fsym=USDT&tsyms=RUB") as resp:
-                data = await resp.json()
-                return float(data["RUB"])
-        except:
-            return 68
-
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     if not CRYPTOBOT_TOKEN:
+        print("[CryptoBot] Нет токена")
         return None
     
     usdt_rate = await get_usdt_rate()
     usdt_amount = round(amount / usdt_rate, 2)
     
-    print(f"[CryptoBot] Курс USDT: {usdt_rate} RUB")
-    print(f"[CryptoBot] Сумма: {amount} RUB = {usdt_amount} USDT")
+    print(f"[CryptoBot] ==================================")
+    print(f"[CryptoBot] КУРС: 1 USDT = {usdt_rate} RUB")
+    print(f"[CryptoBot] Сумма в RUB: {amount}")
+    print(f"[CryptoBot] Сумма в USDT: {usdt_amount}")
+    print(f"[CryptoBot] ==================================")
     
     result = create_crypto_invoice(usdt_amount, order_id, user_id)
     
@@ -353,46 +324,6 @@ async def menu_main(callback: CallbackQuery):
     text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>\n\nВыберите действие:"
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_main_keyboard())
     await callback.answer()
-
-@flask_app.route("/crypto_webhook", methods=["POST"])
-def crypto_webhook():
-    try:
-        data = request.json
-        print(f"Получен вебхук: {data}")
-        
-        payload = data.get("payload")
-        if payload and payload.startswith('user'):
-            parts = payload.split('_')
-            if len(parts) >= 3:
-                user_id = int(parts[1])
-                order_id = parts[2]
-                
-                async def process():
-                    current = await get_balance(user_id)
-                    amount = None
-                    for uid, info in pending_payments.items():
-                        if uid == user_id and info.get("order_id") == order_id:
-                            amount = info["amount"]
-                            break
-                    
-                    if amount:
-                        await update_user_balance(user_id, current + amount)
-                        await bot.send_message(
-                            user_id,
-                            f"✅ <b>Оплата успешно получена!</b>\n\n"
-                            f"💰 Ваш баланс пополнен на <b>{amount} ₽</b>\n"
-                            f"📊 Текущий баланс: <code>{current + amount} ₽</code>",
-                            parse_mode="HTML"
-                        )
-                        if user_id in pending_payments:
-                            del pending_payments[user_id]
-                
-                asyncio.run_coroutine_threadsafe(process(), main_loop)
-        
-        return jsonify({"ok": True}), 200
-    except Exception as e:
-        print(f"Ошибка вебхука: {e}")
-        return jsonify({"ok": False}), 500
 
 @dp.callback_query(lambda c: c.data == "menu_info")
 async def menu_info(callback: CallbackQuery):
@@ -542,7 +473,8 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="💳 СБП (Platega)", callback_data="pay_method_platega"),
-                InlineKeyboardButton(text="🪙 Криптовалюта (CryptoPay)", callback_data="pay_method_crypto")
+                InlineKeyboardButton(text="🪙 Криптовалюта (CryptoPay)", callback_data="pay_method_crypto"),
+                InlineKeyboardButton(text="💸 Ручная оплата (Карта)", callback_data="pay_method_manual")
             ],
             [InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]
         ])
@@ -559,7 +491,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
 
-@dp.callback_query(DepositStates.waiting_method, lambda c: c.data in ["pay_method_platega", "pay_method_crypto"])
+@dp.callback_query(DepositStates.waiting_method, lambda c: c.data in ["pay_method_platega", "pay_method_crypto", "pay_method_manual"])
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     amount = data.get("amount")
@@ -582,12 +514,26 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         )
         payment_url = await create_platega_payment(amount, order_id, user_id)
         method_name = "Platega (СБП)"
-    else:
+    elif callback.data == "pay_method_crypto":
         await callback.message.edit_text(
             f"⏳ <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
         )
         payment_url = await create_crypto_payment(amount, order_id, user_id)
         method_name = "Crypto Pay (Криптовалюта)"
+    else:
+        custom_text = await get_setting("custom_text")
+        await callback.message.edit_text(
+            f"{custom_text}\n\n"
+            f"💰 Сумма: <code>{amount} ₽</code>\n\n"
+            f"📝 В комментарии к переводу укажите ваш ID: <code>{user_id}</code>\n\n"
+            f"✅ После оплаты нажмите кнопку 'Я оплатил'",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Я оплатил", callback_data=f"manual_paid_{amount}")],
+                [InlineKeyboardButton(text="◀️ Назад", callback_data="profile_deposit", icon_custom_emoji_id=BUTTON_EMOJI["back"])]
+            ])
+        )
+        return
     
     if not payment_url:
         await callback.message.edit_text(
@@ -609,6 +555,122 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         disable_web_page_preview=True,
         reply_markup=get_profile_keyboard()
     )
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("manual_paid_"))
+async def manual_paid(callback: CallbackQuery):
+    amount = int(callback.data.split("_")[2])
+    user_id = callback.from_user.id
+    username = callback.from_user.username or callback.from_user.first_name
+    
+    order_id = await create_manual_order(user_id, 0, amount)
+    
+    for admin_id in ADMIN_IDS:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_order_{order_id}_{user_id}_{amount}")],
+            [InlineKeyboardButton(text="❌ Отказать", callback_data=f"reject_order_{order_id}_{user_id}")]
+        ])
+        
+        await bot.send_message(
+            admin_id,
+            f"🆕 <b>НОВАЯ ЗАЯВКА НА РУЧНУЮ ОПЛАТУ</b>\n\n"
+            f"👤 Пользователь: @{username}\n"
+            f"🆔 ID: <code>{user_id}</code>\n"
+            f"💰 Сумма: <code>{amount} ₽</code>\n"
+            f"🆔 Заявка: #{order_id}\n\n"
+            f"Проверьте оплату и подтвердите:",
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    
+    await callback.message.edit_text(
+        f"✅ <b>Заявка отправлена администратору!</b>\n\n"
+        f"💰 Сумма: <code>{amount} ₽</code>\n"
+        f"🆔 Номер заявки: #{order_id}\n\n"
+        f"📞 Ожидайте подтверждения. Обычно это занимает до 15 минут.",
+        parse_mode="HTML",
+        reply_markup=get_profile_keyboard()
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("confirm_order_"))
+async def confirm_manual_order(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔")
+        return
+    
+    parts = callback.data.split("_")
+    order_id = int(parts[2])
+    user_id = int(parts[3])
+    amount = int(parts[4])
+    
+    await update_manual_order_status(order_id, "confirmed")
+    current_balance = await get_balance(user_id)
+    await update_user_balance(user_id, current_balance + amount)
+    
+    await callback.message.edit_text(
+        f"✅ <b>Заявка #{order_id} ПОДТВЕРЖДЕНА!</b>\n\n"
+        f"👤 Пользователь: <code>{user_id}</code>\n"
+        f"💰 Сумма: <code>{amount} ₽</code>\n"
+        f"📊 Баланс пополнен.",
+        parse_mode="HTML"
+    )
+    
+    await bot.send_message(
+        user_id,
+        f"✅ <b>Ваша заявка #{order_id} подтверждена!</b>\n\n"
+        f"💰 Баланс пополнен на <code>{amount} ₽</code>\n"
+        f"📊 Текущий баланс: <code>{current_balance + amount} ₽</code>",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("reject_order_"))
+async def reject_manual_order(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔")
+        return
+    
+    parts = callback.data.split("_")
+    order_id = int(parts[2])
+    user_id = int(parts[3])
+    
+    await update_manual_order_status(order_id, "rejected")
+    
+    await callback.message.edit_text(
+        f"❌ <b>Заявка #{order_id} ОТКЛОНЕНА!</b>",
+        parse_mode="HTML"
+    )
+    
+    await bot.send_message(
+        user_id,
+        f"❌ <b>Ваша заявка #{order_id} отклонена!</b>\n\n"
+        f"Возможно, вы указали неверную сумму или комментарий.\n"
+        f"📞 Свяжитесь с администратором: @nikita1055",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@dp.message(Command("orders"))
+async def list_manual_orders(message: Message):
+    if not is_admin(message.from_user.id):
+        return
+    
+    orders = await get_pending_manual_orders()
+    
+    if not orders:
+        await message.answer("📭 Нет активных заявок на ручную оплату.")
+        return
+    
+    text = "📋 <b>Активные заявки на оплату</b>\n\n"
+    for o in orders:
+        text += f"🆔 Заявка #{o['id']}\n"
+        text += f"👤 Пользователь: <code>{o['user_id']}</code>\n"
+        text += f"💰 Сумма: {o['amount']} ₽\n"
+        text += f"📅 Дата: {o['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
+        text += f"✅ /confirm_{o['id']} - подтвердить\n"
+        text += f"❌ /reject_{o['id']} - отклонить\n\n"
+    
+    await message.answer(text, parse_mode="HTML")
 
 @dp.callback_query(lambda c: c.data == "profile_activate_promocode")
 async def profile_activate_promocode(callback: CallbackQuery, state: FSMContext):
@@ -1407,6 +1469,47 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_keyboard(shop_mode)
     )
     await callback.answer()
+
+@flask_app.route("/webhook/crypto", methods=["POST"])
+def crypto_webhook():
+    signature = request.headers.get("crypto-pay-api-signature")
+    if not signature:
+        return "Unauthorized", 401
+        
+    body = request.data
+    secret = hashlib.sha256(CRYPTOBOT_TOKEN.encode()).digest()
+    calc_signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
+    
+    if signature != calc_signature:
+        print("[Webhook] Неверная подпись!")
+        return "Forbidden", 403
+        
+    data = request.json
+    if data.get("update_type") == "invoice_paid":
+        payload_str = data["update_object"].get("payload")
+        if payload_str:
+            try:
+                user_id_str, rub_amount_str = payload_str.split("_")
+                user_id = int(user_id_str)
+                rub_amount = int(rub_amount_str)
+                
+                async def process():
+                    current = await get_balance(user_id)
+                    await update_user_balance(user_id, current + rub_amount)
+                    await bot.send_message(
+                        user_id,
+                        f"✅ <b>Оплата успешно получена!</b>\n\n"
+                        f"💰 Ваш баланс пополнен на <b>{rub_amount} ₽</b>\n"
+                        f"📊 Текущий баланс: <code>{current + rub_amount} ₽</code>",
+                        parse_mode="HTML"
+                    )
+                    print(f"[CryptoPay] Выдано {rub_amount} руб пользователю {user_id}")
+                
+                asyncio.run_coroutine_threadsafe(process(), main_loop)
+            except Exception as e:
+                print(f"[Webhook] Ошибка: {e}")
+                
+    return jsonify({"status": "ok"}), 200
 
 @flask_app.route("/payment/success", methods=["GET"])
 def payment_success():
