@@ -35,6 +35,76 @@ from database import (
 
 _orig_getaddrinfo = socket.getaddrinfo
 
+CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
+
+def convert_rub_to_usdt(rub_amount, usdt_rate=100):
+    return round(rub_amount / usdt_rate, 2)
+
+def create_crypto_invoice(amount_usd, order_id, user_id):
+    headers = {
+        "Content-Type": "application/json",
+        "Crypto-Pay-API-Token": CRYPTOBOT_TOKEN
+    }
+    
+    data = {
+        "asset": "USDT",
+        "amount": float(amount_usd),
+        "description": f"Пополнение баланса #{order_id}",
+        "paid_btn_name": "callback",
+        "paid_btn_url": f"{YOUR_SITE_URL}/payment_success",
+        "payload": f"user_{user_id}_{order_id}"
+    }
+    
+    try:
+        response = requests.post(
+            f"{CRYPTOBOT_API_URL}/createInvoice",
+            headers=headers,
+            json=data,
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("ok"):
+                invoice = result.get("result")
+                return {
+                    "success": True,
+                    "payment_url": invoice.get("pay_url"),
+                    "invoice_id": str(invoice.get("invoice_id")),
+                    "status": invoice.get("status")
+                }
+        return {"success": False, "error": f"Ошибка {response.status_code}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def check_crypto_payment(invoice_id):
+    headers = {"Crypto-Pay-API-Token": CRYPTOBOT_TOKEN}
+    
+    try:
+        response = requests.get(
+            f"{CRYPTOBOT_API_URL}/getInvoices",
+            headers=headers,
+            params={"invoice_ids": invoice_id},
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            if result.get("ok"):
+                invoices = result.get("result", {}).get("items", [])
+                if invoices:
+                    status = invoices[0].get("status")
+                    if status == "paid":
+                        return "paid"
+                    elif status == "active":
+                        return "pending"
+                    else:
+                        return status
+        return None
+    except Exception as e:
+        print(f"Ошибка проверки: {e}")
+        return None
+
 def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if host == "pay.cryptobot.net":
         try:
@@ -159,33 +229,24 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    if not CRYPTO_PAY_TOKEN:
+    if not CRYPTOBOT_TOKEN:
         return None
     
-    url = "https://pay.cryptobot.net/api/createInvoice"
+    usdt_amount = convert_rub_to_usdt(amount, 100)
     
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Content-Type": "application/json"
-    }
+    result = create_crypto_invoice(usdt_amount, order_id, user_id)
     
-    payload = {
-        "amount": float(amount),
-        "asset": "USDT",
-        "description": f"Пополнение баланса #{order_id}",
-        "payload": f"{user_id}_{amount}"
-    }
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                data = await resp.json()
-                if data.get("ok"):
-                    return data["result"]["pay_url"]
-                return None
-        except Exception as e:
-            print(f"[CryptoPay] Ошибка: {e}")
-            return None
+    if result.get("success"):
+        pending_payments[user_id] = {
+            "amount": amount,
+            "order_id": order_id,
+            "invoice_id": result["invoice_id"],
+            "status": "pending"
+        }
+        return result["payment_url"]
+    else:
+        print(f"[CryptoBot] Ошибка: {result.get('error')}")
+        return None
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -271,6 +332,50 @@ async def menu_main(callback: CallbackQuery):
     text = f"{tg_emoji(STICKERS['click_below'], '✨')} <b>Главное меню</b>\n\nВыберите действие:"
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_main_keyboard())
     await callback.answer()
+
+@flask_app.route("/crypto_webhook", methods=["POST"])
+def crypto_webhook():
+    try:
+        data = request.json
+        print(f"Получен вебхук: {data}")
+        
+        payload = data.get("payload")
+        if payload and payload.startswith('user'):
+            parts = payload.split('_')
+            if len(parts) >= 3:
+                user_id = int(parts[1])
+                order_id = parts[2]
+                
+                async def process():
+                    current = await get_balance(user_id)
+                    amount = None
+                    for uid, info in pending_payments.items():
+                        if uid == user_id and info.get("order_id") == order_id:
+                            amount = info["amount"]
+                            break
+                    
+                    if amount:
+                        await update_user_balance(user_id, current + amount)
+                        await bot.send_message(
+                            user_id,
+                            f"✅ <b>Оплата успешно получена!</b>\n\n"
+                            f"💰 Ваш баланс пополнен на <b>{amount} ₽</b>\n"
+                            f"📊 Текущий баланс: <code>{current + amount} ₽</code>",
+                            parse_mode="HTML"
+                        )
+                        if user_id in pending_payments:
+                            del pending_payments[user_id]
+                
+                asyncio.run_coroutine_threadsafe(process(), main_loop)
+        
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        print(f"Ошибка вебхука: {e}")
+        return jsonify({"ok": False}), 500
+
+@flask_app.route("/payment_success", methods=["GET"])
+def payment_success():
+    return "Оплата прошла успешно! Можете вернуться в бота.", 200
 
 @dp.callback_query(lambda c: c.data == "menu_info")
 async def menu_info(callback: CallbackQuery):
