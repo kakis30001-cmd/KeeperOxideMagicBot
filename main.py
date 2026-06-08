@@ -142,7 +142,6 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     try:
-        # trust_env=True позволяет aiohttp использовать сетевые настройки самого Railway
         async with aiohttp.ClientSession(trust_env=True) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
                 if resp.status == 200:
