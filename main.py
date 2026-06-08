@@ -33,9 +33,6 @@ from database import (
     get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders
 )
 
-print(f"[Platega] MERCHANT_ID: {PLATEGA_MERCHANT_ID}")
-print(f"[Platega] API_SECRET: {PLATEGA_API_SECRET[:20] if PLATEGA_API_SECRET else 'None'}...")
-
 EMOJI = {
     "crypto": "5361914370068613491",
     "sbp": "5363972466857252756",
@@ -220,29 +217,34 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
         print("[Platega] Не настроен магазин")
         return None
     
-    url = "https://app.platega.io/v1/payment"
+    url = "https://app.platega.io/v2/transaction/process"
     
-    data = {
-        "shop_id": PLATEGA_MERCHANT_ID,
-        "amount": amount,
-        "currency": "RUB",
-        "order_id": order_id,
-        "description": f"Пополнение баланса пользователя {user_id}",
-        "success_url": f"{RAILWAY_URL}/payment/success",
-        "fail_url": f"{RAILWAY_URL}/payment/fail",
-        "webhook_url": f"{RAILWAY_URL}/webhook/platega"
+    headers = {
+        "Content-Type": "application/json",
+        "X-MerchantId": PLATEGA_MERCHANT_ID,
+        "X-Secret": PLATEGA_API_SECRET
     }
     
-    sign_str = f"{PLATEGA_MERCHANT_ID}:{amount}:RUB:{order_id}:{PLATEGA_API_SECRET}"
-    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
+    data = {
+        "command": "create",
+        "paymentDetails": {
+            "amount": float(amount),
+            "currency": "RUB"
+        },
+        "description": f"Заказ {order_id} для пользователя {user_id}",
+        "return": f"{RAILWAY_URL}/payment/success",
+        "failedUrl": f"{RAILWAY_URL}/payment/fail",
+        "payload": f"order_{user_id}_{order_id}",
+        "paymentMethod": ["SBP", "CRYPTO"]
+    }
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(url, json=data) as resp:
+            async with session.post(url, headers=headers, json=data) as resp:
                 result = await resp.json()
                 print(f"[Platega] Ответ: {result}")
-                if result.get("status") == "success":
-                    return result.get("payment_url")
+                if result.get("url"):
+                    return result.get("url")
                 return None
         except Exception as e:
             print(f"[Platega] Ошибка: {e}")
@@ -509,10 +511,10 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
-                InlineKeyboardButton(text="Криптовалюта (CryptoPay)", callback_data="pay_method_crypto", icon_custom_emoji_id=EMOJI["crypto"])
+                InlineKeyboardButton(text="💳 СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
+                InlineKeyboardButton(text="🪙 Криптовалюта (CryptoPay)", callback_data="pay_method_crypto", icon_custom_emoji_id=EMOJI["crypto"])
             ],
-            [InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
         ])
         
         await message.answer(
@@ -571,8 +573,8 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         f"{emoji(EMOJI['wallet'], '💳')} <b>Оплата через {method_name}</b>\n\n"
         f"Сумма к оплате: <code>{amount} ₽</code>\n\n"
         f"{emoji(EMOJI['key'], '🔗')} <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
-        f"{emoji(EMOJI['verified'], '🆔')} Транзакция: <code>{order_id}</code>\n\n"
-        f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически в течение 5 секунд после оплаты!",
+        f"{emoji(EMOJI['verified'], '🆔')} Номер заказа: <code>{order_id}</code>\n\n"
+        f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически после оплаты!",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=get_profile_keyboard()
@@ -1401,11 +1403,11 @@ def platega_webhook():
     status = data.get("status")
     payload = data.get("payload")
     
-    if status == "CONFIRMED" and payload:
+    if status == "CONFIRMED" and payload and payload.startswith("order_"):
         parts = payload.split("_")
-        if len(parts) >= 2 and parts[0] == "order":
+        if len(parts) >= 2:
             user_id = int(parts[1])
-            order_id = parts[2]
+            order_id = parts[2] if len(parts) > 2 else ""
             
             amount = None
             for uid, info in pending_payments.items():
@@ -1419,7 +1421,7 @@ def platega_webhook():
                     await update_user_balance(user_id, current + amount)
                     await bot.send_message(
                         user_id,
-                        f"{emoji(EMOJI['check'], '✅')} <b>Баланс пополнен через Platega!</b>\n\n"
+                        f"{emoji(EMOJI['check'], '✅')} <b>Оплата успешно получена через Platega!</b>\n\n"
                         f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n"
                         f"{emoji(EMOJI['almaz'], '📊')} Новый баланс: <code>{current + amount} ₽</code>",
                         parse_mode="HTML"
