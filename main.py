@@ -296,7 +296,7 @@ def get_admin_keyboard(shop_mode="auto"):
             InlineKeyboardButton(text="Управление ключами", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["key"])
         ],
         [
-            InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=EMOJI["clock"]),
+            InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=EMOJI["crown"]),
             InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])
         ]
     ])
@@ -318,7 +318,8 @@ async def start_cmd(message: Message):
     text = (
         f"{emoji(EMOJI['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
         f"{emoji(EMOJI['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n"
-        f"{emoji(EMOJI['arrow_down'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>"
+        f"{emoji(EMOJI['arrow_down'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>\n\n"
+        f"{emoji(EMOJI['heart'], '❤️')} {emoji(EMOJI['joy'], '😊')} {emoji(EMOJI['cat_wink'], '🐱')}"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
 
@@ -404,7 +405,8 @@ async def profile_referral(callback: CallbackQuery):
         f"{emoji(EMOJI['person'], '👥')} Приглашено друзей: <code>{total_referrals}</code>\n"
         f"{emoji(EMOJI['check'], '✅')} Из них купили: <code>{paid_referrals}</code>\n"
         f"{emoji(EMOJI['gift'], '🎁')} <b>Награда за покупку друга:</b> {bonus_text}\n\n"
-        f"{emoji(EMOJI['lamp'], '💡')} Награда начисляется после первой покупки вашего друга!"
+        f"{emoji(EMOJI['lamp'], '💡')} Награда начисляется после первой покупки вашего друга!\n\n"
+        f"{emoji(EMOJI['cat_wink'], '😉')} <i>Приглашайте друзей и получайте бонусы!</i>"
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
@@ -525,7 +527,7 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     
     if not payment_url:
         await callback.message.edit_text(
-            f"{emoji(EMOJI['key'], '❌')} <b>Платежная система временно недоступна</b>\n\n"
+            f"{emoji(EMOJI['cat_surprised'], '😲')} <b>Платежная система временно недоступна</b>\n\n"
             f"Свяжитесь с администратором для ручного пополнения баланса.\n\n"
             f"{emoji(EMOJI['person'], '👤')} Админ: @nikita1055",
             parse_mode="HTML",
@@ -548,7 +550,7 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
 async def profile_activate_promocode(callback: CallbackQuery, state: FSMContext):
     await state.set_state(ProfileActivatePromocodeStates.waiting_code)
     await callback.message.edit_text(
-        f"{emoji(EMOJI['discount'], '🎫')} <b>Активация промокода</b>\n\n"
+        f"{emoji(EMOJI['new'], '🎫')} <b>Активация промокода</b>\n\n"
         f"Введите промокод:\n\n"
         f"Пример: <code>SUMMER2024</code>",
         parse_mode="HTML",
@@ -563,7 +565,7 @@ async def process_activate_promocode(message: Message, state: FSMContext):
     
     if not promocode:
         await message.answer(
-            f"{emoji(EMOJI['key'], '❌')} <b>Промокод не найден или уже использован</b>",
+            f"{emoji(EMOJI['cat_surprised'], '😲')} <b>Промокод не найден или уже использован</b>",
             parse_mode="HTML",
             reply_markup=get_profile_keyboard()
         )
@@ -603,7 +605,8 @@ async def process_activate_promocode(message: Message, state: FSMContext):
         f"{emoji(EMOJI['discount'], '🎫')} Промокод: <code>{code}</code>\n"
         f"{emoji(EMOJI['dollar'], '💰')} Вы получили: {bonus_text}\n"
         f"{emoji(EMOJI['almaz'], '📊')} Было: <code>{current_balance} ₽</code>\n"
-        f"{emoji(EMOJI['almaz'], '📊')} Стало: <code>{new_balance} ₽</code>",
+        f"{emoji(EMOJI['almaz'], '📊')} Стало: <code>{new_balance} ₽</code>\n\n"
+        f"{emoji(EMOJI['joy'], '😊')} <i>Отличный бонус!</i>",
         parse_mode="HTML",
         reply_markup=get_profile_keyboard()
     )
@@ -652,9 +655,10 @@ async def handle_buy(callback: CallbackQuery):
                     await add_balance(referrer_id, config["bonus_value"])
                     await bot.send_message(
                         referrer_id,
-                        f"{emoji(EMOJI['gift'], '🎉')} <b>Реферальный бонус!</b>\n\n"
+                        f"{emoji(EMOJI['cat_dance'], '💃')} <b>Реферальный бонус!</b>\n\n"
                         f"Ваш друг @{callback.from_user.username or callback.from_user.first_name} совершил первую покупку!\n"
-                        f"{emoji(EMOJI['dollar'], '💰')} Вы получили: <code>{config['bonus_value']} ₽</code>",
+                        f"{emoji(EMOJI['dollar'], '💰')} Вы получили: <code>{config['bonus_value']} ₽</code>\n\n"
+                        f"{emoji(EMOJI['joy'], '😊')} Поздравляем!",
                         parse_mode="HTML"
                     )
                 elif config["bonus_type"] == "percent":
@@ -662,9 +666,10 @@ async def handle_buy(callback: CallbackQuery):
                     await add_balance(referrer_id, bonus_amount)
                     await bot.send_message(
                         referrer_id,
-                        f"{emoji(EMOJI['gift'], '🎉')} <b>Реферальный бонус!</b>\n\n"
+                        f"{emoji(EMOJI['cat_dance'], '💃')} <b>Реферальный бонус!</b>\n\n"
                         f"Ваш друг @{callback.from_user.username or callback.from_user.first_name} совершил первую покупку на {product['price']} ₽!\n"
-                        f"{emoji(EMOJI['dollar'], '💰')} Вы получили: <code>{bonus_amount} ₽ ({config['bonus_value']}% от покупки)</code>",
+                        f"{emoji(EMOJI['dollar'], '💰')} Вы получили: <code>{bonus_amount} ₽ ({config['bonus_value']}% от покупки)</code>\n\n"
+                        f"{emoji(EMOJI['joy'], '😊')} Поздравляем!",
                         parse_mode="HTML"
                     )
     
@@ -677,19 +682,20 @@ async def handle_buy(callback: CallbackQuery):
         vip_link = "https://t.me/+a5AssXS77w01Yjky"
     
     await callback.message.answer(
-        f"{emoji(EMOJI['check'], '✅')} <b>Покупка успешна!</b>\n\n"
+        f"{emoji(EMOJI['cat_dance'], '💃')} <b>Покупка успешна!</b>\n\n"
         f"{emoji(EMOJI['key'], '🔑')} <b>Ключей в наличии:</b> {keys_left}\n"
         f"{emoji(EMOJI['dollar'], '💰')} <b>Цена:</b> {product['price']} ₽\n\n"
         f"{emoji(EMOJI['key'], '🔑')} <b>Ваш ключ:</b> <code>{key_row['key_value']}</code>\n\n"
         f"{emoji(EMOJI['key'], '🔗')} <b>Ссылка на VIP канал (одноразовая):</b>\n"
         f"<a href='{vip_link}'>Нажмите для вступления</a>\n\n"
-        f"{emoji(EMOJI['important'], '⚠️')} Ссылка действительна 30 дней и только для вас!",
+        f"{emoji(EMOJI['important'], '⚠️')} Ссылка действительна 30 дней и только для вас!\n\n"
+        f"{emoji(EMOJI['heart'], '❤️')} <i>Спасибо за покупку!</i>",
         parse_mode="HTML",
         disable_web_page_preview=True,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.message.delete()
-    await callback.answer("Покупка успешна!")
+    await callback.answer(f"{emoji(EMOJI['cat_dance'], '💃')} Покупка успешна!")
 
 @dp.message(Command("admin"))
 async def admin_cmd(message: Message):
@@ -699,7 +705,7 @@ async def admin_cmd(message: Message):
     
     shop_mode = await get_setting("shop_mode")
     await message.answer(
-        f"{emoji(EMOJI['person'], '🔐')} <b>Админ-панель</b>",
+        f"{emoji(EMOJI['crown'], '🔐')} <b>Админ-панель</b>",
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
@@ -1075,7 +1081,7 @@ async def process_broadcast(message: Message, state: FSMContext):
         try:
             await bot.send_message(
                 user["user_id"],
-                f"{emoji(EMOJI['magic'], '📢')} <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
+                f"{emoji(EMOJI['notification'], '📢')} <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
                 parse_mode="HTML"
             )
             success_count += 1
@@ -1349,7 +1355,7 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     shop_mode = await get_setting("shop_mode")
     await callback.message.edit_text(
-        f"{emoji(EMOJI['person'], '🔐')} <b>Админ-панель</b>",
+        f"{emoji(EMOJI['crown'], '🔐')} <b>Админ-панель</b>",
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
@@ -1385,7 +1391,8 @@ def crypto_webhook():
                         user_id,
                         f"{emoji(EMOJI['check'], '✅')} <b>Оплата успешно получена!</b>\n\n"
                         f"{emoji(EMOJI['dollar'], '💰')} Ваш баланс пополнен на <b>{rub_amount} ₽</b>\n"
-                        f"{emoji(EMOJI['almaz'], '📊')} Текущий баланс: <code>{current + rub_amount} ₽</code>",
+                        f"{emoji(EMOJI['almaz'], '📊')} Текущий баланс: <code>{current + rub_amount} ₽</code>\n\n"
+                        f"{emoji(EMOJI['joy'], '😊')} Спасибо за оплату!",
                         parse_mode="HTML"
                     )
                     print(f"[CryptoPay] Выдано {rub_amount} руб пользователю {user_id}")
@@ -1422,7 +1429,7 @@ async def main():
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
     
-    print("Бот запущен")
+    print(f"{emoji(EMOJI['cat_dance'], '🤖')} Бот запущен")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
