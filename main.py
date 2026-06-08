@@ -1,19 +1,17 @@
 import asyncio
 import os
 import uuid
-import hashlib
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request, jsonify
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, InputFile
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-import aiohttp
 
-from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, IMAGES_PATH
+from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
@@ -23,7 +21,7 @@ from database import (
     get_referral_config, update_referral_config, add_balance, get_product_by_id,
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
     add_crypto_payment, get_crypto_payment, update_crypto_payment_status,
-    get_crypto_config, update_crypto_config
+    get_crypto_config, update_crypto_config, get_bot_message, update_bot_message, get_all_message_keys
 )
 
 STICKERS = {
@@ -115,8 +113,10 @@ class AdminCryptoSettingsStates(StatesGroup):
     waiting_manual_text = State()
     waiting_manual_photo = State()
 
-class CryptoPayStates(StatesGroup):
-    waiting_payment_confirmation = State()
+class AdminEditMessageStates(StatesGroup):
+    waiting_key = State()
+    waiting_text = State()
+    waiting_photo = State()
 
 async def create_vip_link(user_id: int, days: int = 30):
     try:
@@ -134,58 +134,27 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Магазин", callback_data="menu_shop", icon_custom_emoji_id=BUTTON_EMOJI["shop"]),
-            InlineKeyboardButton(text="Профиль", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["profile"])
-        ],
-        [
-            InlineKeyboardButton(text="Информация", callback_data="menu_info", icon_custom_emoji_id=BUTTON_EMOJI["info"])
-        ]
+        [InlineKeyboardButton(text="Магазин", callback_data="menu_shop", icon_custom_emoji_id=BUTTON_EMOJI["shop"]), InlineKeyboardButton(text="Профиль", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["profile"])],
+        [InlineKeyboardButton(text="Информация", callback_data="menu_info", icon_custom_emoji_id=BUTTON_EMOJI["info"])]
     ])
 
 def get_profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Пополнить баланс", callback_data="profile_deposit", icon_custom_emoji_id=BUTTON_EMOJI["balance"]),
-            InlineKeyboardButton(text="История заказов", callback_data="profile_history", icon_custom_emoji_id=BUTTON_EMOJI["history"])
-        ],
-        [
-            InlineKeyboardButton(text="Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]),
-            InlineKeyboardButton(text="Реферальная система", callback_data="profile_referral", icon_custom_emoji_id=BUTTON_EMOJI["referral"])
-        ],
-        [
-            InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])
-        ]
+        [InlineKeyboardButton(text="Пополнить баланс", callback_data="profile_deposit", icon_custom_emoji_id=BUTTON_EMOJI["balance"]), InlineKeyboardButton(text="История заказов", callback_data="profile_history", icon_custom_emoji_id=BUTTON_EMOJI["history"])],
+        [InlineKeyboardButton(text="Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]), InlineKeyboardButton(text="Реферальная система", callback_data="profile_referral", icon_custom_emoji_id=BUTTON_EMOJI["referral"])],
+        [InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]
     ])
 
 def get_admin_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=BUTTON_EMOJI["add_product"]),
-            InlineKeyboardButton(text="Добавить ключи", callback_data="admin_add_keys", icon_custom_emoji_id=BUTTON_EMOJI["add_keys"])
-        ],
-        [
-            InlineKeyboardButton(text="Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=BUTTON_EMOJI["add_balance"]),
-            InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=BUTTON_EMOJI["broadcast"])
-        ],
-        [
-            InlineKeyboardButton(text="Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]),
-            InlineKeyboardButton(text="Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])
-        ],
-        [
-            InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=BUTTON_EMOJI["referral"])
-        ],
-        [
-            InlineKeyboardButton(text="Настройка криптооплаты", callback_data="admin_crypto_settings", icon_custom_emoji_id=BUTTON_EMOJI["stats"])
-        ],
-        [
-            InlineKeyboardButton(text="Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=BUTTON_EMOJI["delete_product"]),
-            InlineKeyboardButton(text="Управление ключами", callback_data="admin_manage_keys", icon_custom_emoji_id=BUTTON_EMOJI["delete_key"])
-        ],
-        [
-            InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]),
-            InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])
-        ]
+        [InlineKeyboardButton(text="Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=BUTTON_EMOJI["add_product"]), InlineKeyboardButton(text="Добавить ключи", callback_data="admin_add_keys", icon_custom_emoji_id=BUTTON_EMOJI["add_keys"])],
+        [InlineKeyboardButton(text="Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=BUTTON_EMOJI["add_balance"]), InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=BUTTON_EMOJI["broadcast"])],
+        [InlineKeyboardButton(text="Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=BUTTON_EMOJI["promocode"]), InlineKeyboardButton(text="Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=BUTTON_EMOJI["promocode"])],
+        [InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=BUTTON_EMOJI["referral"])],
+        [InlineKeyboardButton(text="Настройка криптооплаты", callback_data="admin_crypto_settings", icon_custom_emoji_id=BUTTON_EMOJI["stats"])],
+        [InlineKeyboardButton(text="✏️ Редактировать сообщения", callback_data="admin_edit_messages", icon_custom_emoji_id=BUTTON_EMOJI["stats"])],
+        [InlineKeyboardButton(text="Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=BUTTON_EMOJI["delete_product"]), InlineKeyboardButton(text="Управление ключами", callback_data="admin_manage_keys", icon_custom_emoji_id=BUTTON_EMOJI["delete_key"])],
+        [InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=BUTTON_EMOJI["stats"]), InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["home"])]
     ])
 
 @dp.message(CommandStart())
@@ -200,8 +169,20 @@ async def start_cmd(message: Message):
         except:
             pass
     await add_user(message.from_user.id, referrer_id)
-    text = f"{tg_emoji(STICKERS['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n{tg_emoji(STICKERS['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n{tg_emoji(STICKERS['click_below'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>"
-    await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
+    
+    msg_data = await get_bot_message("welcome")
+    text = msg_data["text"] if msg_data else "Добро пожаловать!"
+    photo_file_id = msg_data["photo_file_id"] if msg_data else None
+    
+    if photo_file_id:
+        await message.answer_photo(
+            photo=photo_file_id,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=get_main_keyboard()
+        )
+    else:
+        await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
 
 @dp.callback_query(lambda c: c.data == "menu_main")
 async def menu_main(callback: CallbackQuery):
@@ -211,8 +192,23 @@ async def menu_main(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "menu_info")
 async def menu_info(callback: CallbackQuery):
-    info_text = f"{tg_emoji(STICKERS['info_title'], 'ℹ')} <b>ИНФОРМАЦИЯ</b> {tg_emoji(STICKERS['info_title'], 'ℹ')}\n\n{tg_emoji(STICKERS['official_bot'], '✨')} <b>Официальный бот по продаже ключей для чит клиента Magic</b>\n\n{tg_emoji(STICKERS['payment_icon'], '💳')} <b>Оплата:</b> Platega (СБП, Криптовалюта)\n\n{tg_emoji(STICKERS['how_to_use'], '📌')} <b>Как пользоваться:</b>\n• Приобретите ключ через меню\n• После оплаты вы получите ключ и доступ в VIP канал\n\n📞 <b>КОНТАКТЫ:</b>\n• Техподдержка: @nikita1055\n• Основной канал: @keepersell\n• Отзывы: https://t.me/KeeperOtzivi\n\n⚖ <b>ДОКУМЕНТЫ:</b>\n• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
-    await callback.message.edit_text(info_text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["back"])]]))
+    msg_data = await get_bot_message("info")
+    text = msg_data["text"] if msg_data else "Информация"
+    photo_file_id = msg_data["photo_file_id"] if msg_data else None
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    
+    if photo_file_id:
+        await callback.message.delete()
+        await bot.send_photo(
+            chat_id=callback.from_user.id,
+            photo=photo_file_id,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=kb
+        )
+    else:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "menu_shop")
@@ -314,12 +310,11 @@ async def pay_crypto(callback: CallbackQuery):
     else:
         manual_text = crypto_config["manual_text"]
         manual_photo = crypto_config["manual_photo"]
-        if manual_photo and os.path.exists(os.path.join(IMAGES_PATH, manual_photo)):
-            photo = InputFile(os.path.join(IMAGES_PATH, manual_photo))
+        if manual_photo:
             await callback.message.delete()
             await bot.send_photo(
                 chat_id=user_id,
-                photo=photo,
+                photo=manual_photo,
                 caption=f"💎 <b>Оплата криптовалютой (ручной режим)</b>\n\n{manual_text}\n\n💰 Сумма: <code>{product['price']} ₽</code>\n\n📞 После оплаты напишите администратору @nikita1055",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="menu_shop", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
@@ -899,10 +894,10 @@ async def crypto_set_manual_photo(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminCryptoSettingsStates.waiting_manual_photo)
     await callback.message.edit_text(
         "🖼 Отправьте фото для ручного режима оплаты.\n\n"
-        "Файл должен лежать в папке `images` репозитория.\n"
-        "Введите имя файла (например: `payment_qr.jpg`):",
+        "Просто отправьте фото в этот чат (как обычное сообщение).\n"
+        "Нажмите /skip чтобы пропустить.",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_crypto_settings", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="admin_crypto_settings", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
     )
     await callback.answer()
 
@@ -910,11 +905,121 @@ async def crypto_set_manual_photo(callback: CallbackQuery, state: FSMContext):
 async def crypto_set_manual_photo_value(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    manual_photo = message.text.strip()
+    
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+        await message.answer("✅ Фото получено!")
+    
     crypto_config = await get_crypto_config()
-    await update_crypto_config(crypto_config["payment_mode"], crypto_config["currency"], crypto_config["amount"], crypto_config["manual_text"], manual_photo)
+    await update_crypto_config(crypto_config["payment_mode"], crypto_config["currency"], crypto_config["amount"], crypto_config["manual_text"], photo_file_id)
+    
     await state.clear()
-    await message.answer(f"✅ Фото для ручного режима обновлено!\n\n🖼 Файл: {manual_photo}", parse_mode="HTML", reply_markup=get_admin_keyboard())
+    await message.answer("✅ Фото для ручного режима обновлено!", parse_mode="HTML", reply_markup=get_admin_keyboard())
+
+@dp.callback_query(lambda c: c.data == "admin_edit_messages")
+async def admin_edit_messages(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔")
+        return
+    
+    messages = await get_all_message_keys()
+    text = "✏️ <b>Редактирование сообщений бота</b>\n\nВыберите сообщение для редактирования:\n\n"
+    kb = []
+    for msg in messages:
+        key = msg["message_key"]
+        text += f"• <code>{key}</code>\n"
+        kb.append([InlineKeyboardButton(text=f"📝 {key}", callback_data=f"edit_msg_{key}")])
+    kb.append([InlineKeyboardButton(text="◀️ Назад", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])])
+    
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("edit_msg_"))
+async def edit_message_select(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔")
+        return
+    
+    message_key = callback.data.split("_")[2]
+    await state.update_data(message_key=message_key)
+    await state.set_state(AdminEditMessageStates.waiting_text)
+    
+    await callback.message.edit_text(
+        f"✏️ <b>Редактирование сообщения: {message_key}</b>\n\n"
+        f"Отправьте новый текст сообщения (поддерживается HTML):\n\n"
+        f"Пример: <code>Привет, это новое сообщение!</code>\n\n"
+        f"Нажмите /skip чтобы пропустить изменение текста.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="◀️ Назад", callback_data="admin_edit_messages", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
+    )
+    await callback.answer()
+
+@dp.message(AdminEditMessageStates.waiting_text)
+async def edit_message_text(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    new_text = message.text
+    await state.update_data(new_text=new_text)
+    await state.set_state(AdminEditMessageStates.waiting_photo)
+    
+    await message.answer(
+        f"✏️ Текст сохранён!\n\n"
+        f"Теперь отправьте ФОТО для этого сообщения (или нажмите /skip, чтобы оставить без фото):",
+        parse_mode="HTML"
+    )
+
+@dp.message(Command("skip"))
+async def skip_photo(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    data = await state.get_data()
+    message_key = data["message_key"]
+    new_text = data.get("new_text")
+    
+    if new_text:
+        await update_bot_message(message_key, new_text, None)
+    else:
+        msg_data = await get_bot_message(message_key)
+        current_text = msg_data["text"] if msg_data else ""
+        await update_bot_message(message_key, current_text, None)
+    
+    await message.answer(
+        f"✅ <b>Сообщение обновлено!</b>\n\n"
+        f"🔑 Ключ: <code>{message_key}</code>\n"
+        f"📝 Текст обновлён\n"
+        f"🖼 Фото удалено",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await state.clear()
+
+@dp.message(AdminEditMessageStates.waiting_photo)
+async def edit_message_photo(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    data = await state.get_data()
+    message_key = data["message_key"]
+    new_text = data["new_text"]
+    
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+    
+    await update_bot_message(message_key, new_text, photo_file_id)
+    
+    await message.answer(
+        f"✅ <b>Сообщение обновлено!</b>\n\n"
+        f"🔑 Ключ: <code>{message_key}</code>\n"
+        f"📝 Текст обновлён\n"
+        f"🖼 Фото: {'добавлено' if photo_file_id else 'не изменено'}",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard()
+    )
+    await state.clear()
 
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
