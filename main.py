@@ -134,34 +134,27 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    ip_address = "104.26.10.154" 
-    domain = "pay.cryptobot.net"
-    
-    url = f"https://{ip_address}/api/createInvoice"
+    url = "https://pay.cryptobot.net/api/createInvoice"
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Host": domain  
+        "Content-Type": "application/json"
     }
     
     payload = {
-        "amount": str(amount),
+        "amount": float(amount),
         "fiat": "RUB",
         "currency_type": "fiat",
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Настройка кастомного SSL контекста для IP {ip_address}...", flush=True)
+    print(f"[CryptoBot] Отправка запроса на {url}", flush=True)
     
     try:
-        ssl_context = ssl.create_default_context()
-        
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
-        
-        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
-            async with session.post(url, headers=headers, json=payload, server_hostname=domain) as resp:
-                print(f"[CryptoBot] Успешное подключение! Статус-код: {resp.status}", flush=True)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                print(f"[CryptoBot] Статус-код: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
@@ -170,9 +163,8 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                         print(f"[CryptoBot] Ошибка API: {data}", flush=True)
                 else:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
-                    
     except Exception as e:
-        print(f"[CryptoBot] Ошибка при запросе через SSL-контекст: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка: {e}", flush=True)
         
     return None
 def get_main_keyboard():
