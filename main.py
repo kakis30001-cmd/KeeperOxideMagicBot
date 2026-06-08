@@ -161,17 +161,11 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    # Используем один из Anycast IP-адресов Cloudflare для pay.cryptobot.net напрямую
-    ip_address = "104.26.10.154" 
-    domain = "pay.cryptobot.net"
-    
-    url = f"https://{ip_address}/api/createInvoice"
+    url = "https://pay.cryptobot.net/api/createInvoice"
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        # Критически важно: передаем реальный домен в заголовке Host
-        "Host": domain,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        "User-Agent": "Mozilla/5.0 (compatible; Bot/1.0)"
     }
     
     payload = {
@@ -183,36 +177,18 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         "payload": f"{user_id}_{amount}"
     }
     
-    def make_request():
-        import requests
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        
+    import httpx
+    async with httpx.AsyncClient(http2=True, verify=True) as client:
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=10, verify=False)
-            return response
+            response = await client.post(url, headers=headers, json=payload, timeout=10.0)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("ok"):
+                    return data["result"]["pay_url"]
+            print(f"[CryptoBot] Ошибка API: {response.text}", flush=True)
         except Exception as e:
-            return e
-
-    try:
-        resp = await asyncio.to_thread(make_request)
-        
-        if isinstance(resp, Exception):
-             print(f"[CryptoBot] Критическая ошибка requests: {resp}", flush=True)
-             return None
-             
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("ok"):
-                return data["result"]["pay_url"]
-            else:
-                print(f"[CryptoBot] Ошибка API: {data}", flush=True)
-        else:
-            print(f"[CryptoBot] Ошибка сервера: {resp.status_code} - {resp.text}", flush=True)
-                
-    except Exception as e:
-        print(f"[CryptoBot] Ошибка выполнения потока: {e}", flush=True)
-        
+            print(f"[CryptoBot] Ошибка httpx: {e}", flush=True)
+            
     return None
     
 def get_main_keyboard():
