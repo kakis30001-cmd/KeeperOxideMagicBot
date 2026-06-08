@@ -142,15 +142,12 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Запрос через выделенный DNS Google (8.8.8.8) для заказа {order_id}...", flush=True)
+    print(f"[CryptoBot] Отправка стандартного запроса для заказа {order_id}...", flush=True)
     
     try:
-        resolver = aiohttp.AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-        connector = aiohttp.TCPConnector(resolver=resolver, ssl=True)
-        
-        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
+        async with aiohttp.ClientSession(trust_env=True) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
-                print(f"[CryptoBot] Ответ получен! Статус-код: {resp.status}", flush=True)
+                print(f"[CryptoBot] Статус-код ответа: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
@@ -160,7 +157,7 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                 else:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
     except Exception as e:
-        print(f"[CryptoBot] Ошибка при запросе с кастомным DNS: {e}", flush=True)
+        print(f"[CryptoBot] Критическая ошибка: {e}", flush=True)
     return None
 
 def get_main_keyboard():
