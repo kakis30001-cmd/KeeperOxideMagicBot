@@ -216,7 +216,7 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
         print("[Platega] Не настроен магазин")
         return None
     
-    url = "https://platega.com/api/v1/payment"
+    url = "https://platega.io/api/v1/payment"  # <-- ИСПРАВЛЕНО
     
     data = {
         "shop_id": PLATEGA_SHOP_ID,
