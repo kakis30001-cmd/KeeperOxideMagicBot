@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+import socket
 import hashlib
 from datetime import datetime, timedelta
 from threading import Thread
@@ -132,7 +133,7 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
+    domain = "pay.cryptobot.net"
     headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
     payload = {
         "amount": str(amount),
@@ -142,11 +143,20 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Отправка стандартного запроса для заказа {order_id}...", flush=True)
+    print(f"[CryptoBot] Локальный резолв домена {domain}...", flush=True)
     
     try:
-        async with aiohttp.ClientSession(trust_env=True) as session:
-            async with session.post(url, headers=headers, json=payload) as resp:
+        loop = asyncio.get_event_loop()
+        ip_address = (await loop.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP))[0][4][0]
+        print(f"[CryptoBot] Успешно определен IP: {ip_address}", flush=True)
+        
+        url = f"https://{ip_address}/api/createInvoice"
+        
+        connector = aiohttp.TCPConnector(ssl=True)
+        
+        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
+            headers["Host"] = domain
+            async with session.post(url, headers=headers, json=payload, server_hostname=domain) as resp:
                 print(f"[CryptoBot] Статус-код ответа: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
@@ -156,8 +166,10 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                         print(f"[CryptoBot] Ошибка API: {data}", flush=True)
                 else:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
+                    
     except Exception as e:
-        print(f"[CryptoBot] Критическая ошибка: {e}", flush=True)
+        print(f"[CryptoBot] Критическая ошибка резолва/запроса: {e}", flush=True)
+        
     return None
 
 def get_main_keyboard():
