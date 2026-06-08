@@ -13,7 +13,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
-import requests  # Бронебойный инструмент для обхода сетевых багов Railway
+import requests  
 
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 try:
@@ -134,12 +134,10 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-# ПОЛНОСТЬЮ РАБОЧАЯ БРОНЕБОЙНАЯ ФУНКЦИЯ ЧЕРЕЗ СИНХРОННЫЙ REQUESTS В ПОТОКЕ
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     url = "https://pay.cryptobot.net/api/createInvoice"
     headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
-    
-    # Передаем payload формата user_id:amount для автовыдачи через вебхуки
+
     payload_str = f"{user_id}_{amount}"
     
     payload = {
@@ -154,7 +152,6 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     print(f"[CryptoBot] Отправка запроса через requests поток для заказа {order_id}...", flush=True)
     
     try:
-        # Запускаем в отдельном потоке ОС, полностью игнорируя баги DNS-стека aiohttp в контейнере
         response = await asyncio.to_thread(
             requests.post, url, headers=headers, json=payload, timeout=8
         )
@@ -421,7 +418,6 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             parse_mode="HTML"
         )
 
-# ПЛАВНЫЕ ПЕРЕХОДЫ И ИСПРАВЛЕНИЕ КНОПКИ КРИПТОВАЛЮТЫ (ТЕПЕРЬ НЕ ЗАВИСАЕТ!)
 @dp.callback_query(DepositStates.waiting_method, lambda c: c.data in ["pay_method_platega", "pay_method_crypto"])
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -435,18 +431,15 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         "status": "pending"
     }
     
-    # Плавная анимация загрузки: моментально сбрасываем состояние кнопки и выводим статус
     await callback.answer("Генерируем счёт...")
     
     if callback.data == "pay_method_platega":
-        # Плавное обновление текста сообщения на статус генерации
         await callback.message.edit_text(
             f"⏳ <b>Создаем безопасную сессию СБП...</b>\nПожалуйста, подождите.", parse_mode="HTML"
         )
         payment_url = await create_platega_payment(amount, order_id, callback.from_user.id)
         method_name = "Platega (СБП)"
     else:
-        # Плавное обновление текста для Криптовалюты
         await callback.message.edit_text(
             f"⏳ <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
         )
@@ -463,7 +456,6 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         )
         return
     
-    # Плавный переход к финальному экрану со ссылкой на оплату
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через {method_name}</b>\n\n"
         f"Сумма к оплате: <code>{amount} ₽</code>\n\n"
@@ -1272,9 +1264,7 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_keyboard(shop_mode)
     )
     await callback.answer()
-
-
-# --- АСИНХРОННАЯ ФУНКЦИЯ ДЛЯ ВЫДАЧИ БАЛАНСА В TELEGRAM (ВЫЗЫВАЕТСЯ ИЗ FLASK ПОТОКА) ---
+    
 async def process_successful_payment(user_id: int, rub_amount: int):
     try:
         current_balance = await get_balance(user_id)
@@ -1293,7 +1283,6 @@ async def process_successful_payment(user_id: int, rub_amount: int):
         print(f"[Выдача] Ошибка уведомления пользователя {user_id}: {e}", flush=True)
 
 
-# --- МАРШРУТЫ СЕРВЕРА FLASK + ОБРАБОТЧИК ВЕБХУКОВ CRYPTOBOT ---
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
     return jsonify({"status": "ok"}), 200
@@ -1304,7 +1293,6 @@ def crypto_webhook():
     if not signature:
         return "Unauthorized", 401
         
-    # Защита от взлома: сверяем подпись на основе токена CryptoBot
     body = request.data
     secret = hashlib.sha256(CRYPTO_PAY_TOKEN.encode()).digest()
     calc_signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
@@ -1318,12 +1306,10 @@ def crypto_webhook():
         payload_str = data["update_object"].get("payload")
         if payload_str:
             try:
-                # Распаковываем user_id и сумму рублей из переданной строки
                 user_id_str, rub_amount_str = payload_str.split("_")
                 user_id = int(user_id_str)
                 rub_amount = int(rub_amount_str)
                 
-                # Прокидываем таску на безопасное выполнение в главный асинхронный цикл aiogram
                 if main_loop:
                     asyncio.run_coroutine_threadsafe(
                         process_successful_payment(user_id, rub_amount), main_loop
@@ -1349,15 +1335,13 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     flask_app.run(host="0.0.0.0", port=port)
 
-# ГЛАВНАЯ СТАРТОВАЯ ТОЧКА БОТА
 async def main():
     global main_loop
-    main_loop = asyncio.get_running_loop() # Захватываем асинхронный цикл aiogram
+    main_loop = asyncio.get_running_loop() 
     
     await connect_db()
     await bot.delete_webhook(drop_pending_updates=True)
     
-    # Запускаем Flask-сервер в фоновом изолированном потоке
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
     
@@ -1366,9 +1350,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-"""
-
-with open("main_v5.py", "w", encoding="utf-8") as f:
-    f.write(code_content)
-
-print("File generated successfully.")
