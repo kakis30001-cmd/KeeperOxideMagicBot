@@ -2,6 +2,7 @@ import asyncio
 import os
 import uuid
 import socket
+import ssl  
 import hashlib
 from datetime import datetime, timedelta
 from threading import Thread
@@ -133,8 +134,15 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
-    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    ip_address = "104.26.10.154" 
+    domain = "pay.cryptobot.net"
+    
+    url = f"https://{ip_address}/api/createInvoice"
+    
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "Host": domain 
+    
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
@@ -143,16 +151,16 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Запрос через DNS Google (8.8.8.8) с поддержкой aiodns...", flush=True)
+    print(f"[CryptoBot] Настройка кастомного SSL контекста для IP {ip_address}...", flush=True)
     
     try:
-        # Теперь, когда библиотека aiodns прописана в requirements.txt, этот кусок сработает идеально!
-        resolver = aiohttp.AsyncResolver(nameservers=["8.8.8.8", "8.8.4.4"])
-        connector = aiohttp.TCPConnector(resolver=resolver, ssl=True)
+        ssl_context = ssl.create_default_context()
+        
+        connector = aiohttp.TCPConnector(ssl=ssl_context)
         
         async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                print(f"[CryptoBot] Статус ответа: {resp.status}", flush=True)
+            async with session.post(url, headers=headers, json=payload, server_hostname=domain) as resp:
+                print(f"[CryptoBot] Успешное подключение! Статус-код: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
@@ -161,8 +169,10 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                         print(f"[CryptoBot] Ошибка API: {data}", flush=True)
                 else:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
+                    
     except Exception as e:
-        print(f"[CryptoBot] Ошибка DNS-запроса: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка при запросе через SSL-контекст: {e}", flush=True)
+        
     return None
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
