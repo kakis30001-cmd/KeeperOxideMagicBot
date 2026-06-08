@@ -167,23 +167,34 @@ async def create_vip_link(user_id: int, days: int = 30):
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
-
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     if not CRYPTO_PAY_TOKEN:
-        print("[CryptoPay] Нет токена")
         return None
     
-    try:
-        invoice = await cp.create_invoice(
-            amount=float(amount),
-            asset="USDT",
-            description=f"Пополнение баланса #{order_id}",
-            payload=f"{user_id}_{amount}"
-        )
-        return invoice.mini_app_invoice_url
-    except Exception as e:
-        print(f"[CryptoPay] Ошибка: {e}")
-        return None
+    url = "https://pay.cryptobot.net/api/createInvoice"
+    
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "amount": float(amount),
+        "asset": "USDT",
+        "description": f"Пополнение баланса #{order_id}",
+        "payload": f"{user_id}_{amount}"
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                data = await resp.json()
+                if data.get("ok"):
+                    return data["result"]["pay_url"]
+                return None
+        except Exception as e:
+            print(f"[CryptoPay] Ошибка: {e}")
+            return None
 
 @cp.invoice_paid()
 async def handle_crypto_payment(invoice: Invoice, message: Message = None):
