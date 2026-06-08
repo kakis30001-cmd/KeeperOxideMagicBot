@@ -141,7 +141,8 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Host": domain 
+        "Host": domain  
+    }
     
     payload = {
         "amount": str(amount),
