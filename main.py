@@ -211,9 +211,38 @@ async def create_vip_link(user_id: int, days: int = 30):
         return invite_link.invite_link
     except:
         return None
-
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
-    return None
+    if not PLATEGA_SHOP_ID or not PLATEGA_API_KEY:
+        print("[Platega] Не настроен магазин")
+        return None
+    
+    url = "https://platega.com/api/v1/payment"
+    
+    data = {
+        "shop_id": PLATEGA_SHOP_ID,
+        "amount": amount,
+        "currency": "RUB",
+        "order_id": order_id,
+        "description": f"Пополнение баланса пользователя {user_id}",
+        "success_url": f"{RAILWAY_URL}/payment/success",
+        "fail_url": f"{RAILWAY_URL}/payment/fail",
+        "webhook_url": f"{RAILWAY_URL}/webhook/platega"
+    }
+    
+    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{order_id}:{PLATEGA_API_KEY}"
+    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=data) as resp:
+                result = await resp.json()
+                print(f"[Platega] Ответ: {result}")
+                if result.get("status") == "success":
+                    return result.get("payment_url")
+                return None
+        except Exception as e:
+            print(f"[Platega] Ошибка: {e}")
+            return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     if not CRYPTOBOT_TOKEN:
