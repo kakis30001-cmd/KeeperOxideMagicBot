@@ -132,8 +132,13 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
-    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    url = "https://104.26.11.154/api/createInvoice"
+    
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "Host": "pay.cryptobot.net"
+    }
+    
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
@@ -142,22 +147,23 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Отправка запроса на сумму {amount} RUB для заказа {order_id}...", flush=True)
+    print(f"[CryptoBot] Жёсткий обход DNS. Запрос на IP Cloudflare для заказа {order_id}...", flush=True)
     
     try:
-        async with aiohttp.ClientSession(trust_env=True) as session:
+        connector = aiohttp.TCPConnector(ssl=False)
+        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
-                print(f"[CryptoBot] Ответ сервера получен. Статус-код: {resp.status}", flush=True)
+                print(f"[CryptoBot] Ответ получен! Статус-код: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
                         return data["result"]["pay_url"]
                     else:
-                        print(f"[CryptoBot] Ошибка в теле ответа API: {data}", flush=True)
+                        print(f"[CryptoBot] Ошибка API: {data}", flush=True)
                 else:
-                    print(f"[CryptoBot] Ошибка сервера API: {await resp.text()}", flush=True)
+                    print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
     except Exception as e:
-        print(f"[CryptoBot] Исключение при выполнении запроса: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка даже при обходе DNS: {e}", flush=True)
     return None
 
 def get_main_keyboard():
