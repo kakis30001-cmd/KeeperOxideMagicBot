@@ -211,6 +211,7 @@ async def create_vip_link(user_id: int, days: int = 30):
         return invite_link.invite_link
     except:
         return None
+
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     if not PLATEGA_SHOP_ID or not PLATEGA_API_KEY:
         print("[Platega] Не настроен магазин")
@@ -219,31 +220,31 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     url = "https://app.platega.io/v2/transaction/process"
     
     headers = {
-    "Content-Type": "application/json",
-    "X-MerchantId": PLATEGA_SHOP_ID,
-    "X-Secret": PLATEGA_API_KEY
-}
-
-data = {
-    "command": "create",
-    "paymentDetails": {
-        "amount": float(amount),
-        "currency": "RUB"
-    },
-    "description": f"Пополнение баланса пользователя {user_id}",
-    "return": f"{RAILWAY_URL}/payment/success",
-    "failedUrl": f"{RAILWAY_URL}/payment/fail",
-    "payload": f"order_{user_id}_{order_id}",
-    "paymentMethod": ["SBP", "CRYPTO"]
-}
+        "Content-Type": "application/json",
+        "X-MerchantId": PLATEGA_SHOP_ID,
+        "X-Secret": PLATEGA_API_KEY
+    }
+    
+    data = {
+        "command": "create",
+        "paymentDetails": {
+            "amount": float(amount),
+            "currency": "RUB"
+        },
+        "description": f"Пополнение баланса пользователя {user_id}",
+        "return": f"{RAILWAY_URL}/payment/success",
+        "failedUrl": f"{RAILWAY_URL}/payment/fail",
+        "payload": f"order_{user_id}_{order_id}",
+        "paymentMethod": ["SBP", "CRYPTO"]
+    }
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(url, json=data) as resp:
+            async with session.post(url, headers=headers, json=data) as resp:
                 result = await resp.json()
                 print(f"[Platega] Ответ: {result}")
-                if result.get("status") == "success":
-                    return result.get("payment_url")
+                if result.get("url"):
+                    return result.get("url")
                 return None
         except Exception as e:
             print(f"[Platega] Ошибка: {e}")
@@ -352,8 +353,7 @@ async def start_cmd(message: Message):
     text = (
         f"{emoji(EMOJI['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
         f"{emoji(EMOJI['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n"
-        f"{emoji(EMOJI['arrow_down'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>\n\n"
-        f"{emoji(EMOJI['joy'], '😊')}"
+        f"{emoji(EMOJI['arrow_down'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>"
     )
     await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
 
@@ -444,41 +444,6 @@ async def profile_referral(callback: CallbackQuery):
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
-
-@flask_app.route("/webhook/platega", methods=["POST"])
-def platega_webhook():
-    data = request.get_json()
-    print(f"[Platega Webhook] Получены данные: {data}")
-    
-    status = data.get("status")
-    order_id = data.get("order_id")
-    amount = int(data.get("amount", 0))
-    
-    if status == "success" and order_id:
-        user_id = None
-        for uid, info in pending_payments.items():
-            if info.get("order_id") == order_id:
-                user_id = uid
-                break
-        
-        if user_id:
-            async def process():
-                current = await get_balance(user_id)
-                await update_user_balance(user_id, current + amount)
-                await bot.send_message(
-                    user_id,
-                    f"{emoji(EMOJI['check'], '✅')} <b>Баланс пополнен через СБП!</b>\n\n"
-                    f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n"
-                    f"{emoji(EMOJI['almaz'], '📊')} Новый баланс: <code>{current + amount} ₽</code>",
-                    parse_mode="HTML"
-                )
-                if user_id in pending_payments:
-                    del pending_payments[user_id]
-            
-            asyncio.run_coroutine_threadsafe(process(), main_loop)
-            return jsonify({"status": "ok"}), 200
-    
-    return jsonify({"status": "error"}), 400
 
 @dp.callback_query(lambda c: c.data == "profile_history")
 async def profile_history(callback: CallbackQuery):
@@ -1429,6 +1394,45 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_keyboard(shop_mode)
     )
     await callback.answer()
+
+@flask_app.route("/webhook/platega", methods=["POST"])
+def platega_webhook():
+    data = request.json
+    print(f"[Platega Webhook] Получены данные: {data}")
+    
+    status = data.get("status")
+    payload = data.get("payload")
+    
+    if status == "CONFIRMED" and payload:
+        parts = payload.split("_")
+        if len(parts) >= 2 and parts[0] == "order":
+            user_id = int(parts[1])
+            order_id = parts[2]
+            
+            amount = None
+            for uid, info in pending_payments.items():
+                if uid == user_id and info.get("order_id") == order_id:
+                    amount = info["amount"]
+                    break
+            
+            if amount:
+                async def process():
+                    current = await get_balance(user_id)
+                    await update_user_balance(user_id, current + amount)
+                    await bot.send_message(
+                        user_id,
+                        f"{emoji(EMOJI['check'], '✅')} <b>Баланс пополнен через Platega!</b>\n\n"
+                        f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n"
+                        f"{emoji(EMOJI['almaz'], '📊')} Новый баланс: <code>{current + amount} ₽</code>",
+                        parse_mode="HTML"
+                    )
+                    if user_id in pending_payments:
+                        del pending_payments[user_id]
+                
+                asyncio.run_coroutine_threadsafe(process(), main_loop)
+                return jsonify({"status": "ok"}), 200
+    
+    return jsonify({"status": "error"}), 400
 
 @flask_app.route("/webhook/crypto", methods=["POST"])
 def crypto_webhook():
