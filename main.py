@@ -4,7 +4,8 @@ import uuid
 import hashlib
 import hmac
 import socket        
-import json           
+import json        
+import subprocess
 import urllib.request  
 from datetime import datetime, timedelta
 from threading import Thread
@@ -161,14 +162,7 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    ip = "104.26.10.154" 
-    url = f"https://{ip}/api/createInvoice"
-    
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "User-Agent": "Mozilla/5.0",
-        "Host": "pay.cryptobot.net" 
-    }
+    url = "https://pay.cryptobot.net/api/createInvoice"
     
     payload = {
         "amount": str(amount),
@@ -179,18 +173,28 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         "payload": f"{user_id}_{amount}"
     }
     
-    import httpx
-    async with httpx.AsyncClient(verify=True) as client:
-        try:
-            response = await client.post(url, headers=headers, json=payload, timeout=10.0)
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("ok"):
-                    return data["result"]["pay_url"]
-            print(f"[CryptoBot] Ошибка API: {response.status_code}", flush=True)
-        except Exception as e:
-            print(f"[CryptoBot] Ошибка httpx: {e}", flush=True)
+    curl_command = [
+        "curl", "-s", "-X", "POST", url,
+        "-H", f"Crypto-Pay-API-Token: {CRYPTO_PAY_TOKEN}",
+        "-H", "Content-Type: application/json",
+        "-d", json.dumps(payload),
+        "--connect-timeout", "10"
+    ]
+    
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run, curl_command, capture_output=True, text=True, check=True
+        )
+        
+        data = json.loads(result.stdout)
+        if data.get("ok"):
+            return data["result"]["pay_url"]
+        else:
+            print(f"[CryptoBot] Ошибка API: {data}", flush=True)
             
+    except Exception as e:
+        print(f"[CryptoBot] Ошибка через curl: {e}", flush=True)
+        
     return None
     
 def get_main_keyboard():
