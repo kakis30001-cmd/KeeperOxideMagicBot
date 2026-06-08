@@ -104,7 +104,7 @@ dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
 
 pending_payments = {}
-main_loop = None  # Глобальная переменная связи между потоками Flask и aiogram
+main_loop = None  
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
@@ -159,7 +159,7 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-async def create_crypto_payment(amount: int, order_id: str) -> str:
+async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     url = "https://pay.cryptobot.net/api/createInvoice"
     
     headers = {
@@ -171,7 +171,8 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "fiat": "RUB",
         "currency_type": "fiat",
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
-        "description": f"Пополнение баланса №{order_id}"
+        "description": f"Пополнение баланса №{order_id}",
+        "payload": f"{user_id}_{amount}" 
     }
     
     try:
