@@ -14,6 +14,12 @@ from aiogram.fsm.context import FSMContext
 import aiohttp
 
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
+# Попытка импортировать CRYPTO_PAY_TOKEN из config, если его там нет - используем пустую заглушку
+try:
+    from config import CRYPTO_PAY_TOKEN
+except ImportError:
+    CRYPTO_PAY_TOKEN = "YOUR_CRYPTO_BOT_TOKEN"
+
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
@@ -21,7 +27,8 @@ from database import (
     get_all_users, create_promocode, get_promocode, use_promocode, check_promocode_used,
     get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_paid_referrals_count,
     get_referral_config, update_referral_config, add_balance, get_product_by_id,
-    delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased
+    delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
+    get_setting, update_setting
 )
 
 STICKERS = {
@@ -86,6 +93,7 @@ class AddKeysStates(StatesGroup):
 
 class DepositStates(StatesGroup):
     waiting_amount = State()
+    waiting_method = State() # Новое состояние для выбора СБП или Крипты
 
 class AdminAddBalanceStates(StatesGroup):
     waiting_user_id = State()
@@ -107,6 +115,9 @@ class AdminRefBonusStates(StatesGroup):
     waiting_type = State()
     waiting_value = State()
 
+class AdminCustomTextStates(StatesGroup):
+    waiting_text = State() # Состояние для изменения текста ручной продажи
+
 async def create_vip_link(user_id: int, days: int = 30):
     try:
         invite_link = await bot.create_chat_invite_link(
@@ -119,6 +130,28 @@ async def create_vip_link(user_id: int, days: int = 30):
         return None
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
+    return None
+
+# Интеграция с CryptoBot API для создания счета криптовалютой
+async def create_crypto_payment(amount: int, order_id: str) -> str:
+    url = "https://pay.cryptobot.net/api/createInvoice"
+    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    payload = {
+        "amount": str(amount),
+        "fiat": "RUB",
+        "currency_type": "fiat",
+        "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
+        "description": f"Пополнение баланса №{order_id}"
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("ok"):
+                        return data["result"]["pay_url"]
+    except Exception as e:
+        print(f"Ошибка создания крипто-счета: {e}")
     return None
 
 def get_main_keyboard():
@@ -147,7 +180,8 @@ def get_profile_keyboard():
         ]
     ])
 
-def get_admin_keyboard():
+def get_admin_keyboard(shop_mode="auto"):
+    mode_text = "🤖 Режим: Авто" if shop_mode == "auto" else "👨‍💻 Режим: Ручной"
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=BUTTON_EMOJI["add_product"]),
@@ -163,6 +197,10 @@ def get_admin_keyboard():
         ],
         [
             InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=BUTTON_EMOJI["referral"]),
+        ],
+        [
+            InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_mode"),
+            InlineKeyboardButton(text="📝 Текст кастома", callback_data="admin_change_custom_text")
         ],
         [
             InlineKeyboardButton(text="Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=BUTTON_EMOJI["delete_product"]),
@@ -206,7 +244,7 @@ async def menu_info(callback: CallbackQuery):
     info_text = (
         f"{tg_emoji(STICKERS['info_title'], 'ℹ')} <b>ИНФОРМАЦИЯ</b> {tg_emoji(STICKERS['info_title'], 'ℹ')}\n\n"
         f"{tg_emoji(STICKERS['official_bot'], '✨')} <b>Официальный бот по продаже ключей для чит клиента Magic</b>\n\n"
-        f"{tg_emoji(STICKERS['payment_icon'], '💳')} <b>Оплата:</b> Platega (СБП, Криптовалюта)\n\n"
+        f"{tg_emoji(STICKERS['payment_icon'], '💳')} <b>Оплата:</b> Platega (СБП), Crypto Pay (Криптовалюта)\n\n"
         f"{tg_emoji(STICKERS['how_to_use'], '📌')} <b>Как пользоваться:</b>\n"
         f"• Приобретите ключ через меню\n"
         f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
@@ -308,6 +346,14 @@ async def profile_history(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "profile_deposit")
 async def profile_deposit(callback: CallbackQuery, state: FSMContext):
+    # ПРОВЕРКА РЕЖИМА МАГАЗИНА ПЕРЕД ПОПОЛНЕНИЕМ
+    shop_mode = await get_setting("shop_mode")
+    if shop_mode == "custom":
+        custom_text = await get_setting("custom_text")
+        await callback.message.answer(custom_text, parse_mode="HTML")
+        await callback.answer()
+        return
+
     await state.set_state(DepositStates.waiting_amount)
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['enter_amount'], '💰')} <b>Укажите сумму пополнения баланса</b>\n\n"
@@ -320,6 +366,14 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(DepositStates.waiting_amount)
 async def process_deposit_amount(message: Message, state: FSMContext):
+    # Дополнительная проверка режима магазина на этапе ввода суммы
+    shop_mode = await get_setting("shop_mode")
+    if shop_mode == "custom":
+        custom_text = await get_setting("custom_text")
+        await message.answer(custom_text, parse_mode="HTML")
+        await state.clear()
+        return
+
     try:
         amount = int(message.text.strip())
         if amount < 10 or amount > 50000:
@@ -330,36 +384,21 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             return
         
         await state.update_data(amount=amount)
-        await state.clear()
+        await state.set_state(DepositStates.waiting_method)
         
-        order_id = str(uuid.uuid4())[:8]
-        pending_payments[message.from_user.id] = {
-            "amount": amount,
-            "order_id": order_id,
-            "status": "pending"
-        }
-        
-        payment_url = await create_platega_payment(amount, order_id, message.from_user.id)
-        
-        if not payment_url:
-            await message.answer(
-                f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Платежная система временно недоступна</b>\n\n"
-                f"Свяжитесь с администратором для пополнения баланса.\n\n"
-                f"👤 Админ: @nikita1055",
-                parse_mode="HTML",
-                reply_markup=get_profile_keyboard()
-            )
-            return
+        # Интерактивный выбор метода оплаты
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="💳 СБП (Platega)", callback_data="pay_method_platega"),
+                InlineKeyboardButton(text="🪙 Криптовалюта (CryptoPay)", callback_data="pay_method_crypto")
+            ],
+            [InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=BUTTON_EMOJI["back"])]
+        ])
         
         await message.answer(
-            f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через Platega</b>\n\n"
-            f"Сумма: <code>{amount} ₽</code>\n\n"
-            f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
-            f"🆔 Номер заказа: <code>{order_id}</code>\n\n"
-            f"⚡ После оплаты баланс пополнится автоматически",
+            f"✨ <b>Сумма пополнения: {amount} ₽</b>\n\nВыберите предпочтительный метод оплаты:",
             parse_mode="HTML",
-            disable_web_page_preview=True,
-            reply_markup=get_profile_keyboard()
+            reply_markup=kb
         )
         
     except ValueError:
@@ -367,6 +406,49 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             f"{tg_emoji(STICKERS['keys_count'], '❌')} Введите <b>число</b>!\n\nПример: <code>500</code>",
             parse_mode="HTML"
         )
+
+@dp.callback_query(DepositStates.waiting_method, lambda c: c.data in ["pay_method_platega", "pay_method_crypto"])
+async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    amount = data.get("amount")
+    await state.clear()
+    
+    order_id = str(uuid.uuid4())[:8]
+    pending_payments[callback.from_user.id] = {
+        "amount": amount,
+        "order_id": order_id,
+        "status": "pending"
+    }
+    
+    if callback.data == "pay_method_platega":
+        payment_url = await create_platega_payment(amount, order_id, callback.from_user.id)
+        method_name = "Platega (СБП)"
+    else:
+        payment_url = await create_crypto_payment(amount, order_id)
+        method_name = "Crypto Pay (Криптовалюта)"
+    
+    if not payment_url:
+        await callback.message.answer(
+            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Платежная система временно недоступна</b>\n\n"
+            f"Свяжитесь с администратором для пополнения баланса.\n\n"
+            f"👤 Админ: @nikita1055",
+            parse_mode="HTML",
+            reply_markup=get_profile_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    await callback.message.answer(
+        f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через {method_name}</b>\n\n"
+        f"Сумма: <code>{amount} ₽</code>\n\n"
+        f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
+        f"🆔 Номер заказа: <code>{order_id}</code>\n\n"
+        f"⚡ После оплаты баланс пополнится автоматически",
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=get_profile_keyboard()
+    )
+    await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_activate_promocode")
 async def profile_activate_promocode(callback: CallbackQuery, state: FSMContext):
@@ -437,6 +519,14 @@ async def process_activate_promocode(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: CallbackQuery):
+    # ПРОВЕРКА РЕЖИМА МАГАЗИНА ПЕРЕД ПОКУПКОЙ
+    shop_mode = await get_setting("shop_mode")
+    if shop_mode == "custom":
+        custom_text = await get_setting("custom_text")
+        await callback.message.answer(custom_text, parse_mode="HTML")
+        await callback.answer()
+        return
+
     product_id = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
     
@@ -516,10 +606,56 @@ async def admin_cmd(message: Message):
         await message.answer("⛔ Доступ запрещен")
         return
     
+    shop_mode = await get_setting("shop_mode")
     await message.answer(
         f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
         parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
+        reply_markup=get_admin_keyboard(shop_mode)
+    )
+
+@dp.callback_query(lambda c: c.data == "admin_toggle_mode")
+async def admin_toggle_mode(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Доступ запрещен")
+        return
+    
+    current_mode = await get_setting("shop_mode")
+    new_mode = "custom" if current_mode == "auto" else "auto"
+    await update_setting("shop_mode", new_mode)
+    
+    status_text = "👨‍💻 РУЧНОЙ (Кастомный текст)" if new_mode == "custom" else "🤖 АВТО (Автоплатежи)"
+    await callback.answer(f"Режим изменен на: {status_text}")
+    await callback.message.edit_reply_markup(reply_markup=get_admin_keyboard(new_mode))
+
+@dp.callback_query(lambda c: c.data == "admin_change_custom_text")
+async def admin_change_custom_text(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔ Доступ запрещен")
+        return
+        
+    current_text = await get_setting("custom_text")
+    await state.set_state(AdminCustomTextStates.waiting_text)
+    await callback.message.answer(
+        f"📝 <b>Текущий текст ручной продажи:</b>\n\n{current_text}\n\n"
+        f"Введите новый текст, который будут видеть пользователи в режиме ручной продажи (поддерживается HTML разметка):",
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+@dp.message(AdminCustomTextStates.waiting_text)
+async def process_custom_text_save(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+        
+    new_text = message.text.strip()
+    await update_setting("custom_text", new_text)
+    await state.clear()
+    
+    shop_mode = await get_setting("shop_mode")
+    await message.answer(
+        "✅ <b>Текст ручной продажи успешно обновлен!</b>",
+        parse_mode="HTML",
+        reply_markup=get_admin_keyboard(shop_mode)
     )
 
 @dp.callback_query(lambda c: c.data == "admin_add_product")
@@ -566,9 +702,11 @@ async def product_keys(message: Message, state: FSMContext):
     
     product_id = await add_product(data["name"], data["price"])
     await add_keys_to_product(product_id, keys)
+    
+    shop_mode = await get_setting("shop_mode")
     await message.answer(
         f"✅ Товар добавлен! {len(keys)} ключей\n📦 ID товара: {product_id}",
-        reply_markup=get_admin_keyboard()
+        reply_markup=get_admin_keyboard(shop_mode)
     )
     await state.clear()
 
@@ -579,9 +717,10 @@ async def admin_add_keys(callback: CallbackQuery, state: FSMContext):
         return
     products = await get_all_products()
     if not products:
+        shop_mode = await get_setting("shop_mode")
         await callback.message.edit_text(
             "❌ Сначала добавьте товар",
-            reply_markup=get_admin_keyboard()
+            reply_markup=get_admin_keyboard(shop_mode)
         )
         await callback.answer()
         return
@@ -616,9 +755,11 @@ async def process_keys_only(message: Message, state: FSMContext):
     product_id = data["product_id"]
     keys = [k.strip() for k in message.text.split("\n") if k.strip()]
     await add_keys_to_product(product_id, keys)
+    
+    shop_mode = await get_setting("shop_mode")
     await message.answer(
         f"✅ Добавлено {len(keys)} ключей для товара ID {product_id}",
-        reply_markup=get_admin_keyboard()
+        reply_markup=get_admin_keyboard(shop_mode)
     )
     await state.clear()
 
@@ -655,7 +796,8 @@ async def delete_product_cmd(message: Message):
     try:
         product_id = int(message.text.split("_")[1])
         await delete_product(product_id)
-        await message.answer("✅ Товар удален!", reply_markup=get_admin_keyboard())
+        shop_mode = await get_setting("shop_mode")
+        await message.answer("✅ Товар удален!", reply_markup=get_admin_keyboard(shop_mode))
     except:
         await message.answer("❌ Ошибка при удалении")
 
@@ -718,7 +860,8 @@ async def delete_key_cmd(message: Message):
     try:
         key_id = int(message.text.split("_")[1])
         await delete_key(key_id)
-        await message.answer("✅ Ключ удален!", reply_markup=get_admin_keyboard())
+        shop_mode = await get_setting("shop_mode")
+        await message.answer("✅ Ключ удален!", reply_markup=get_admin_keyboard(shop_mode))
     except:
         await message.answer("❌ Ошибка при удалении")
 
@@ -769,13 +912,14 @@ async def process_add_balance_amount(message: Message, state: FSMContext):
         current_balance = await get_balance(user_id)
         await update_user_balance(user_id, current_balance + amount)
         
+        shop_mode = await get_setting("shop_mode")
         await message.answer(
             f"✅ <b>Баланс успешно выдан!</b>\n\n"
             f"👤 Пользователь: <code>{user_id}</code>\n"
             f"💰 Сумма: <code>{amount} ₽</code>\n"
             f"📊 Новый баланс: <code>{current_balance + amount} ₽</code>",
             parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
+            reply_markup=get_admin_keyboard(shop_mode)
         )
         
         await bot.send_message(
@@ -799,7 +943,7 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminBroadcastStates.waiting_message)
     await callback.message.edit_text(
         "📢 <b>Рассылка сообщения</b>\n\n"
-        "Введите текст сообщения для рассылки всем пользователям:\n\n"
+        "Введите text сообщения для рассылки всем пользователям:\n\n"
         "Поддерживается HTML разметка",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
@@ -835,12 +979,13 @@ async def process_broadcast(message: Message, state: FSMContext):
             fail_count += 1
         await asyncio.sleep(0.05)
     
+    shop_mode = await get_setting("shop_mode")
     await message.answer(
         f"✅ <b>Рассылка завершена!</b>\n\n"
         f"✅ Доставлено: <code>{success_count}</code>\n"
         f"❌ Не доставлено: <code>{fail_count}</code>",
         parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
+        reply_markup=get_admin_keyboard(shop_mode)
     )
     await state.clear()
 
@@ -945,13 +1090,14 @@ async def create_promocode_max_uses(message: Message, state: FSMContext):
         else:
             type_text = f"{discount_value} ₽ (бонус)"
         
+        shop_mode = await get_setting("shop_mode")
         await message.answer(
             f"✅ <b>Промокод успешно создан!</b>\n\n"
             f"🎫 Код: <code>{code}</code>\n"
             f"📊 Тип: {type_text}\n"
             f"🔢 Максимум активаций: <code>{max_uses}</code>",
             parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
+            reply_markup=get_admin_keyboard(shop_mode)
         )
         await state.clear()
         
@@ -965,12 +1111,13 @@ async def admin_list_promocodes(callback: CallbackQuery):
         return
     
     promocodes = await get_all_promocodes()
+    shop_mode = await get_setting("shop_mode")
     
     if not promocodes:
         await callback.message.edit_text(
             "📭 <b>Список промокодов пуст</b>",
             parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
+            reply_markup=get_admin_keyboard(shop_mode)
         )
         await callback.answer()
         return
@@ -989,7 +1136,7 @@ async def admin_list_promocodes(callback: CallbackQuery):
         text += f"   📊 Использован: {p['used_count']}/{p['max_uses']}\n"
         text += f"   🗑️ /del_{p['id']} - удалить\n\n"
     
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_admin_keyboard())
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_admin_keyboard(shop_mode))
     await callback.answer()
 
 @dp.message(lambda m: m.text and m.text.startswith("/del_"))
@@ -999,7 +1146,8 @@ async def delete_promocode_cmd(message: Message):
     try:
         promocode_id = int(message.text.split("_")[1])
         await delete_promocode(promocode_id)
-        await message.answer("✅ Промокод удален!", reply_markup=get_admin_keyboard())
+        shop_mode = await get_setting("shop_mode")
+        await message.answer("✅ Промокод удален!", reply_markup=get_admin_keyboard(shop_mode))
     except:
         await message.answer("❌ Ошибка при удалении")
 
@@ -1062,11 +1210,12 @@ async def ref_value_callback(message: Message, state: FSMContext):
         
         bonus_text = f"{value} ₽" if bonus_type == "rubles" else f"{value}% от покупки"
         
+        shop_mode = await get_setting("shop_mode")
         await message.answer(
             f"✅ <b>Настройки реферальной системы обновлены!</b>\n\n"
             f"🎁 Тип бонуса: {bonus_text}",
             parse_mode="HTML",
-            reply_markup=get_admin_keyboard()
+            reply_markup=get_admin_keyboard(shop_mode)
         )
         await state.clear()
     except ValueError:
@@ -1078,6 +1227,7 @@ async def admin_stats(callback: CallbackQuery):
         await callback.answer("⛔")
         return
     stats = await get_stats()
+    shop_mode = await get_setting("shop_mode")
     await callback.message.edit_text(
         f"📊 <b>Статистика</b>\n\n"
         f"👥 Пользователей: <code>{stats['users']}</code>\n"
@@ -1086,17 +1236,18 @@ async def admin_stats(callback: CallbackQuery):
         f"🔑 Осталось ключей: <code>{stats['keys_left']}</code>\n"
         f"📦 Товаров в продаже: <code>{stats['products_count']}</code>",
         parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
+        reply_markup=get_admin_keyboard(shop_mode)
     )
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "admin_back")
 async def admin_back(callback: CallbackQuery, state: FSMContext):
     await state.clear()
+    shop_mode = await get_setting("shop_mode")
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['profile'], '🔐')} <b>Админ-панель</b>",
         parse_mode="HTML",
-        reply_markup=get_admin_keyboard()
+        reply_markup=get_admin_keyboard(shop_mode)
     )
     await callback.answer()
 
