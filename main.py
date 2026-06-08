@@ -21,6 +21,9 @@ from aiogram.fsm.context import FSMContext
 import aiohttp
 import requests  
 
+print(f"[Platega] MERCHANT_ID: {PLATEGA_MERCHANT_ID}")
+print(f"[Platega] API_SECRET: {PLATEGA_API_SECRET[:20]}...")
+
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, CRYPTOBOT_TOKEN, PLATEGA_MERCHANT_ID, PLATEGA_API_SECRET
 from database import (
     connect_db, add_user, get_balance, get_all_products,
