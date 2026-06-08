@@ -73,14 +73,41 @@ async def connect_db():
         )
         """)
         
+        # Таблица для системных настроек (Переключатель Авто/Кастом и Текст)
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS bot_settings(
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """)
+        
         await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
+        """)
+        
+        # Настройки магазина по умолчанию
+        await conn.execute("""
+        INSERT INTO bot_settings (key, value) VALUES ('shop_mode', 'auto') ON CONFLICT (key) DO NOTHING
+        """)
+        await conn.execute("""
+        INSERT INTO bot_settings (key, value) VALUES ('custom_text', '⏳ Автоматические продажи временно отключены. Пожалуйста, напишите администратору @nikita1055 для ручной покупки ключа.') ON CONFLICT (key) DO NOTHING
         """)
         
         try:
             await conn.execute("ALTER TABLE users ADD COLUMN has_purchased BOOLEAN DEFAULT FALSE")
         except:
             pass
+
+async def get_setting(key: str) -> str:
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT value FROM bot_settings WHERE key = $1", key)
+
+async def update_setting(key: str, value: str):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO bot_settings (key, value) VALUES ($1, $2) 
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, key, value)
 
 async def add_user(user_id: int, referrer_id: int = None):
     async with pool.acquire() as conn:
