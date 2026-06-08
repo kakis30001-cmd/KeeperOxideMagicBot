@@ -1387,10 +1387,6 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-@flask_app.route("/webhook/payment", methods=["POST"])
-def payment_webhook():
-    return jsonify({"status": "ok"}), 200
-
 @flask_app.route("/webhook/crypto", methods=["POST"])
 def crypto_webhook():
     signature = request.headers.get("crypto-pay-api-signature")
