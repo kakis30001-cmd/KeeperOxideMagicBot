@@ -133,8 +133,18 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
+    # Прописываем один из официальных IP-адресов Cloudflare, где висит CryptoBot
+    ip_address = "104.26.10.154" 
     domain = "pay.cryptobot.net"
-    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    
+    # URL шлюза теперь идет строго по IP
+    url = f"https://{ip_address}/api/createInvoice"
+    
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "Host": domain  # Говорим Cloudflare, какой именно сайт мы вызываем
+    }
+    
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
@@ -143,21 +153,16 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Локальный резолв домена {domain}...", flush=True)
+    print(f"[CryptoBot] Полный обход DNS хостинга. Стучимся напрямую на IP {ip_address}...", flush=True)
     
     try:
-        loop = asyncio.get_event_loop()
-        ip_address = (await loop.getaddrinfo(domain, 443, proto=socket.IPPROTO_TCP))[0][4][0]
-        print(f"[CryptoBot] Успешно определен IP: {ip_address}", flush=True)
-        
-        url = f"https://{ip_address}/api/createInvoice"
-        
+        # Включаем SSL, но через server_hostname принудительно сопоставляем IP и домен сертификата
         connector = aiohttp.TCPConnector(ssl=True)
         
         async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
-            headers["Host"] = domain
+            # server_hostname=domain спасает от ошибки SSLV3_ALERT_HANDSHAKE_FAILURE
             async with session.post(url, headers=headers, json=payload, server_hostname=domain) as resp:
-                print(f"[CryptoBot] Статус-код ответа: {resp.status}", flush=True)
+                print(f"[CryptoBot] Ответ получен! Статус-код: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
@@ -168,7 +173,7 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
                     print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
                     
     except Exception as e:
-        print(f"[CryptoBot] Критическая ошибка резолва/запроса: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка при прямом хаке IP: {e}", flush=True)
         
     return None
 
