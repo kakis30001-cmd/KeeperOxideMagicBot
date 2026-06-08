@@ -134,10 +134,14 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
+    ip_address = "149.154.167.112"
+    domain = "pay.cryptobot.net"
+    
+    url = f"https://{ip_address}/api/createInvoice"
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "Host": domain,
         "Content-Type": "application/json"
     }
     
@@ -149,24 +153,21 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Отправка запроса на {url}", flush=True)
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
     
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
-                print(f"[CryptoBot] Статус-код: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
                         return data["result"]["pay_url"]
-                    else:
-                        print(f"[CryptoBot] Ошибка API: {data}", flush=True)
-                else:
-                    print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
     except Exception as e:
-        print(f"[CryptoBot] Ошибка: {e}", flush=True)
-        
-    return None
+        print(f"[CryptoBot] Ошибка: {e}")
+        return None
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
