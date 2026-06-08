@@ -44,16 +44,14 @@ def convert_rub_to_usdt(rub_amount, usdt_rate=100):
 
 def create_crypto_invoice(amount_usd, order_id, user_id):
     headers = {
-        "Content-Type": "application/json",
-        "Crypto-Pay-API-Token": CRYPTOBOT_TOKEN
+        "Crypto-Pay-API-Token": CRYPTOBOT_TOKEN,
+        "Content-Type": "application/json"
     }
     
     data = {
         "asset": "USDT",
-        "amount": float(amount_usd),
+        "amount": str(amount_usd),
         "description": f"Пополнение баланса #{order_id}",
-        "paid_btn_name": "callback",
-        "paid_btn_url": f"{YOUR_SITE_URL}/payment_success",
         "payload": f"user_{user_id}_{order_id}"
     }
     
@@ -65,6 +63,9 @@ def create_crypto_invoice(amount_usd, order_id, user_id):
             timeout=30
         )
         
+        print(f"[CryptoBot] Статус: {response.status_code}")
+        print(f"[CryptoBot] Ответ: {response.text}")
+        
         if response.status_code == 200:
             result = response.json()
             if result.get("ok"):
@@ -75,7 +76,7 @@ def create_crypto_invoice(amount_usd, order_id, user_id):
                     "invoice_id": str(invoice.get("invoice_id")),
                     "status": invoice.get("status")
                 }
-        return {"success": False, "error": f"Ошибка {response.status_code}"}
+        return {"success": False, "error": f"Ошибка {response.status_code}: {response.text}"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
