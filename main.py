@@ -1,9 +1,9 @@
 import asyncio
 import os
 import uuid
-import socket
-import ssl  
 import hashlib
+import ssl
+import socket
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request, jsonify
@@ -15,12 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 
-from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
-try:
-    from config import CRYPTO_PAY_TOKEN
-except ImportError:
-    CRYPTO_PAY_TOKEN = "YOUR_CRYPTO_BOT_TOKEN"
-
+from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, PLATEGA_SHOP_ID, PLATEGA_API_KEY, CRYPTO_PAY_TOKEN
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
@@ -94,7 +89,7 @@ class AddKeysStates(StatesGroup):
 
 class DepositStates(StatesGroup):
     waiting_amount = State()
-    waiting_method = State() 
+    waiting_method = State()
 
 class AdminAddBalanceStates(StatesGroup):
     waiting_user_id = State()
@@ -117,7 +112,7 @@ class AdminRefBonusStates(StatesGroup):
     waiting_value = State()
 
 class AdminCustomTextStates(StatesGroup):
-    waiting_text = State() 
+    waiting_text = State()
 
 async def create_vip_link(user_id: int, days: int = 30):
     try:
@@ -131,17 +126,49 @@ async def create_vip_link(user_id: int, days: int = 30):
         return None
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
-    return None
+    if not PLATEGA_SHOP_ID or not PLATEGA_API_KEY:
+        return None
+    
+    url = "https://platega.com/api/v1/payment"
+    
+    data = {
+        "shop_id": PLATEGA_SHOP_ID,
+        "amount": amount,
+        "currency": "RUB",
+        "order_id": order_id,
+        "description": f"Пополнение баланса пользователя {user_id}",
+        "success_url": f"{RAILWAY_URL}/payment/success",
+        "fail_url": f"{RAILWAY_URL}/payment/fail",
+        "webhook_url": f"{RAILWAY_URL}/webhook/payment"
+    }
+    
+    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{order_id}:{PLATEGA_API_KEY}"
+    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=data) as resp:
+                result = await resp.json()
+                if result.get("status") == "success":
+                    return result.get("payment_url")
+                return None
+        except:
+            return None
 
 async def create_crypto_payment(amount: int, order_id: str) -> str:
-    ip_address = "149.154.167.112"
-    domain = "pay.cryptobot.net"
+    if not CRYPTO_PAY_TOKEN:
+        return None
+    
+    try:
+        ip_address = socket.gethostbyname("pay.cryptobot.net")
+    except:
+        ip_address = "149.154.167.112"
     
     url = f"https://{ip_address}/api/createInvoice"
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Host": domain,
+        "Host": "pay.cryptobot.net",
         "Content-Type": "application/json"
     }
     
@@ -150,24 +177,26 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "fiat": "RUB",
         "currency_type": "fiat",
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
-        "description": f"Пополнение баланса №{order_id}"
+        "description": f"Пополнение баланса #{order_id}"
     }
     
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
     
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     
-    try:
-        async with aiohttp.ClientSession(connector=connector) as session:
+    async with aiohttp.ClientSession(connector=connector) as session:
+        try:
             async with session.post(url, headers=headers, json=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
                         return data["result"]["pay_url"]
-    except Exception as e:
-        print(f"[CryptoBot] Ошибка: {e}")
-        return None
+                return None
+        except:
+            return None
+
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -425,14 +454,16 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     
     order_id = str(uuid.uuid4())[:8]
-    pending_payments[callback.from_user.id] = {
+    user_id = callback.from_user.id
+    
+    pending_payments[user_id] = {
         "amount": amount,
         "order_id": order_id,
         "status": "pending"
     }
     
     if callback.data == "pay_method_platega":
-        payment_url = await create_platega_payment(amount, order_id, callback.from_user.id)
+        payment_url = await create_platega_payment(amount, order_id, user_id)
         method_name = "Platega (СБП)"
     else:
         payment_url = await create_crypto_payment(amount, order_id)
@@ -440,9 +471,8 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     
     if not payment_url:
         await callback.message.answer(
-            f"{tg_emoji(STICKERS['keys_count'], '❌')} <b>Платежная система временно недоступна</b>\n\n"
-            f"Свяжитесь с администратором для пополнения баланса.\n\n"
-            f"👤 Админ: @nikita1055",
+            f"❌ <b>Платежная система временно недоступна</b>\n\n"
+            f"Свяжитесь с администратором: @nikita1055",
             parse_mode="HTML",
             reply_markup=get_profile_keyboard()
         )
@@ -450,8 +480,8 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         return
     
     await callback.message.answer(
-        f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через {method_name}</b>\n\n"
-        f"Сумма: <code>{amount} ₽</code>\n\n"
+        f"💳 <b>Оплата через {method_name}</b>\n\n"
+        f"💰 Сумма: <code>{amount} ₽</code>\n\n"
         f"🔗 <a href='{payment_url}'>Нажмите для оплаты</a>\n\n"
         f"🆔 Номер заказа: <code>{order_id}</code>\n\n"
         f"⚡ После оплаты баланс пополнится автоматически",
@@ -953,7 +983,7 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminBroadcastStates.waiting_message)
     await callback.message.edit_text(
         "📢 <b>Рассылка сообщения</b>\n\n"
-        "Введите text сообщения для рассылки всем пользователям:\n\n"
+        "Введите текст сообщения для рассылки всем пользователям:\n\n"
         "Поддерживается HTML разметка",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
@@ -1263,7 +1293,37 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
 
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
-    return jsonify({"status": "ok"}), 200
+    data = request.get_json()
+    
+    status = data.get("status")
+    order_id = data.get("order_id")
+    amount = int(data.get("amount", 0))
+    
+    if status == "success" and order_id:
+        user_id = None
+        for uid, info in pending_payments.items():
+            if info.get("order_id") == order_id:
+                user_id = uid
+                break
+        
+        if user_id:
+            async def update_balance():
+                current = await get_balance(user_id)
+                await update_user_balance(user_id, current + amount)
+                await bot.send_message(
+                    user_id,
+                    f"✅ <b>Баланс пополнен!</b>\n\n"
+                    f"Сумма: <code>{amount} ₽</code>\n"
+                    f"Новый баланс: <code>{current + amount} ₽</code>",
+                    parse_mode="HTML"
+                )
+                if user_id in pending_payments:
+                    del pending_payments[user_id]
+            
+            asyncio.run(update_balance())
+            return jsonify({"status": "ok"}), 200
+    
+    return jsonify({"status": "error"}), 400
 
 @flask_app.route("/payment/success", methods=["GET"])
 def payment_success():
