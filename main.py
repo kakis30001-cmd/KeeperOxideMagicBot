@@ -68,6 +68,7 @@ EMOJI = {
     "cat_surprised": "5242261773817492813",
     "cat_wink": "5199427253225667842",
     "cat_dance": "5359444458930718519",
+    "joystick": "5870717606364713020",
 }
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
@@ -95,9 +96,6 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     return _orig_getaddrinfo(host, port, family, type, proto, flags)
 
 socket.getaddrinfo = _patched_getaddrinfo
-
-def tg_emoji(sticker_id: str, fallback: str = "") -> str:
-    return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -241,61 +239,62 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         print(f"[CryptoBot] Ошибка: {result.get('error')}")
         return None
 
+# ========== КЛАВИАТУРЫ С PREMIUM ЭМОДЗИ (без текстовых эмодзи) ==========
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['store'], '🛍')} Магазин", callback_data="menu_shop", icon_custom_emoji_id=EMOJI["store"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['person'], '👤')} Профиль", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["person"])
+            InlineKeyboardButton(text="Магазин", callback_data="menu_shop", icon_custom_emoji_id=EMOJI["store"]),
+            InlineKeyboardButton(text="Профиль", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["person"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['document'], 'ℹ')} Информация", callback_data="menu_info", icon_custom_emoji_id=EMOJI["document"])
+            InlineKeyboardButton(text="Информация", callback_data="menu_info", icon_custom_emoji_id=EMOJI["document"])
         ]
     ])
 
 def get_profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['dollar'], '💰')} Пополнить баланс", callback_data="profile_deposit", icon_custom_emoji_id=EMOJI["dollar"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['folder'], '📋')} История заказов", callback_data="profile_history", icon_custom_emoji_id=EMOJI["folder"])
+            InlineKeyboardButton(text="Пополнить баланс", callback_data="profile_deposit", icon_custom_emoji_id=EMOJI["dollar"]),
+            InlineKeyboardButton(text="История заказов", callback_data="profile_history", icon_custom_emoji_id=EMOJI["folder"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['discount'], '🎫')} Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=EMOJI["discount"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['repeat'], '👥')} Реферальная система", callback_data="profile_referral", icon_custom_emoji_id=EMOJI["repeat"])
+            InlineKeyboardButton(text="Активировать промокод", callback_data="profile_activate_promocode", icon_custom_emoji_id=EMOJI["discount"]),
+            InlineKeyboardButton(text="Реферальная система", callback_data="profile_referral", icon_custom_emoji_id=EMOJI["repeat"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '🏠')} Главное меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])
+            InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])
         ]
     ])
 
 def get_admin_keyboard(shop_mode="auto"):
-    mode_text = "🤖 Режим: Авто" if shop_mode == "auto" else f"{emoji(EMOJI['person'], '👨‍💻')} Режим: Ручной"
+    mode_text = "Режим: Авто" if shop_mode == "auto" else "Режим: Ручной"
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['shop'], '➕')} Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=EMOJI["shop"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['key'], '🔑')} Добавить ключи", callback_data="admin_add_keys", icon_custom_emoji_id=EMOJI["key"])
+            InlineKeyboardButton(text="Добавить товар", callback_data="admin_add_product", icon_custom_emoji_id=EMOJI["shop"]),
+            InlineKeyboardButton(text="Добавить ключи", callback_data="admin_add_keys", icon_custom_emoji_id=EMOJI["key"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['dollar'], '💰')} Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=EMOJI["dollar"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['phone'], '📢')} Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=EMOJI["phone"])
+            InlineKeyboardButton(text="Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=EMOJI["dollar"]),
+            InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=EMOJI["phone"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['discount'], '🎫')} Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=EMOJI["discount"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['folder'], '📋')} Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=EMOJI["folder"])
+            InlineKeyboardButton(text="Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=EMOJI["discount"]),
+            InlineKeyboardButton(text="Список промокодов", callback_data="admin_list_promocodes", icon_custom_emoji_id=EMOJI["folder"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['repeat'], '🎁')} Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=EMOJI["repeat"]),
+            InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=EMOJI["repeat"]),
         ],
         [
             InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_mode"),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['document'], '📝')} Текст кастома", callback_data="admin_change_custom_text", icon_custom_emoji_id=EMOJI["document"])
+            InlineKeyboardButton(text="Текст кастома", callback_data="admin_change_custom_text", icon_custom_emoji_id=EMOJI["document"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['store'], '📦')} Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=EMOJI["store"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['key'], '🔑')} Управление ключами", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["key"])
+            InlineKeyboardButton(text="Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=EMOJI["store"]),
+            InlineKeyboardButton(text="Управление ключами", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["key"])
         ],
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['clock'], '📊')} Статистика", callback_data="admin_stats", icon_custom_emoji_id=EMOJI["clock"]),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '🏠')} Главное меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])
+            InlineKeyboardButton(text="Статистика", callback_data="admin_stats", icon_custom_emoji_id=EMOJI["clock"]),
+            InlineKeyboardButton(text="Главное меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])
         ]
     ])
 
@@ -343,7 +342,7 @@ async def menu_info(callback: CallbackQuery):
         f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>"
     )
-    await callback.message.edit_text(info_text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
+    await callback.message.edit_text(info_text, parse_mode="HTML", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "menu_shop")
@@ -353,15 +352,15 @@ async def menu_shop(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{emoji(EMOJI['key'], '📭')} <b>Товаров пока нет</b>",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
         )
         await callback.answer()
         return
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['game'], '🎮')} {p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}", icon_custom_emoji_id=EMOJI["game"])]
+        [InlineKeyboardButton(text=f"{p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}", icon_custom_emoji_id=EMOJI["joystick"])]
         for p in products
-    ] + [[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     
     await callback.message.edit_text(
         f"{emoji(EMOJI['store'], '🛍')} <b>Выберите интересующий вас товар</b>",
@@ -404,7 +403,7 @@ async def profile_referral(callback: CallbackQuery):
         f"{emoji(EMOJI['gift'], '🎁')} <b>Награда за покупку друга:</b> {bonus_text}\n\n"
         f"{emoji(EMOJI['lamp'], '💡')} Награда начисляется после первой покупки вашего друга!"
     )
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_history")
@@ -415,7 +414,7 @@ async def profile_history(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{emoji(EMOJI['folder'], '📋')} <b>История заказов</b>\n\nУ вас пока нет покупок.",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
         )
         await callback.answer()
         return
@@ -423,12 +422,12 @@ async def profile_history(callback: CallbackQuery):
     history_text = f"{emoji(EMOJI['gift'], '🎉')} <b>История заказов</b>\n\n"
     for p in purchases[:10]:
         history_text += f"{emoji(EMOJI['verified'], '🆔')} Заказ #{p['id']}\n"
-        history_text += f"{emoji(EMOJI['game'], '🎮')} Товар: {p['name']}\n"
+        history_text += f"{emoji(EMOJI['joystick'], '🎮')} Товар: {p['name']}\n"
         history_text += f"{emoji(EMOJI['dollar'], '💰')} Цена: {p['price']} ₽\n"
         history_text += f"{emoji(EMOJI['calendar'], '📅')} Дата: {p['created_at'].strftime('%d.%m.%Y %H:%M')}\n"
         history_text += "─" * 15 + "\n"
     
-    await callback.message.edit_text(history_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
+    await callback.message.edit_text(history_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_deposit")
@@ -446,7 +445,7 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
         f"Введите сумму от 10 до 50000 ₽\n\nПример: <code>500</code>\n\n"
         f"Отправьте число в этот чат",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -473,10 +472,10 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text=f"{emoji(EMOJI['sbp'], '💳')} СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
-                InlineKeyboardButton(text=f"{emoji(EMOJI['crypto'], '🪙')} Криптовалюта (CryptoPay)", callback_data="pay_method_crypto", icon_custom_emoji_id=EMOJI["crypto"])
+                InlineKeyboardButton(text="СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
+                InlineKeyboardButton(text="Криптовалюта (CryptoPay)", callback_data="pay_method_crypto", icon_custom_emoji_id=EMOJI["crypto"])
             ],
-            [InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
+            [InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
         ])
         
         await message.answer(
@@ -550,7 +549,7 @@ async def profile_activate_promocode(callback: CallbackQuery, state: FSMContext)
         f"Введите промокод:\n\n"
         f"Пример: <code>SUMMER2024</code>",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -684,7 +683,7 @@ async def handle_buy(callback: CallbackQuery):
         f"{emoji(EMOJI['important'], '⚠️')} Ссылка действительна 30 дней и только для вас!",
         parse_mode="HTML",
         disable_web_page_preview=True,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '🏠')} В меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="В меню", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.message.delete()
     await callback.answer("Покупка успешна!")
@@ -712,7 +711,7 @@ async def admin_toggle_mode(callback: CallbackQuery):
     new_mode = "custom" if current_mode == "auto" else "auto"
     await update_setting("shop_mode", new_mode)
     
-    status_text = "👨‍💻 РУЧНОЙ (Кастомный текст)" if new_mode == "custom" else "🤖 АВТО (Автоплатежи)"
+    status_text = "РУЧНОЙ (Кастомный текст)" if new_mode == "custom" else "АВТО (Автоплатежи)"
     await callback.answer(f"Режим изменен на: {status_text}")
     await callback.message.edit_reply_markup(reply_markup=get_admin_keyboard(new_mode))
 
@@ -756,7 +755,7 @@ async def admin_add_product(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"{emoji(EMOJI['document'], '📝')} Введите название товара:",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -824,7 +823,7 @@ async def admin_add_keys(callback: CallbackQuery, state: FSMContext):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"addkeys_{p['id']}")]
         for p in products
-    ] + [[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     
     await callback.message.edit_text(
         f"{emoji(EMOJI['folder'], '📦')} Выберите товар для добавления ключей:",
@@ -844,7 +843,7 @@ async def select_for_keys(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"{emoji(EMOJI['key'], '🔑')} Введите ключи (по одному на строку):",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -876,7 +875,7 @@ async def admin_manage_products(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{emoji(EMOJI['folder'], '📭')} <b>Список товаров пуст</b>",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
         )
         await callback.answer()
         return
@@ -888,7 +887,7 @@ async def admin_manage_products(callback: CallbackQuery):
         text += f"{emoji(EMOJI['dollar'], '💰')} Цена: {p['price']} ₽\n"
         text += f"{emoji(EMOJI['key'], '🗑️')} /delproduct_{p['id']} - удалить товар\n\n"
     
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
 
 @dp.message(lambda m: m.text and m.text.startswith("/delproduct_"))
@@ -914,7 +913,7 @@ async def admin_manage_keys(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{emoji(EMOJI['folder'], '📭')} <b>Сначала добавьте товар</b>",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
         )
         await callback.answer()
         return
@@ -922,7 +921,7 @@ async def admin_manage_keys(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"{p['name']} (ID: {p['id']})", callback_data=f"showkeys_{p['id']}")]
         for p in products
-    ] + [[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     
     await callback.message.edit_text(f"{emoji(EMOJI['key'], '🔑')} Выберите товар для просмотра ключей:", parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -941,7 +940,7 @@ async def show_keys(callback: CallbackQuery):
         await callback.message.edit_text(
             f"{emoji(EMOJI['key'], '🔑')} <b>Ключи для товара {product['name']}</b>\n\nСписок пуст",
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["arrow_back"])]])
         )
         await callback.answer()
         return
@@ -952,7 +951,7 @@ async def show_keys(callback: CallbackQuery):
         text += f"{emoji(EMOJI['verified'], '🆔')} ID: {k['id']} | {k['key_value']} | {status}\n"
         text += f"{emoji(EMOJI['key'], '🗑️')} /delkey_{k['id']} - удалить ключ\n\n"
     
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '◀️')} Назад", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="admin_manage_keys", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
 
 @dp.message(lambda m: m.text and m.text.startswith("/delkey_"))
@@ -978,7 +977,7 @@ async def admin_add_balance(callback: CallbackQuery, state: FSMContext):
         "Введите ID пользователя Telegram:\n\n"
         "Пример: <code>123456789</code>",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -1048,7 +1047,7 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
         "Введите текст сообщения для рассылки всем пользователям:\n\n"
         "Поддерживается HTML разметка",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -1102,7 +1101,7 @@ async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
         "Введите название промокода (только латиница и цифры, без пробелов):\n\n"
         "Пример: <code>SUMMER2024</code>",
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
     await callback.answer()
 
@@ -1115,10 +1114,10 @@ async def create_promocode_code(message: Message, state: FSMContext):
     await state.set_state(AdminCreatePromocodeStates.waiting_type)
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['discount'], '%')} Скидка в процентах (%)", callback_data="promo_type_percent", icon_custom_emoji_id=EMOJI["discount"])],
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['dollar'], '💰')} Скидка в рублях (₽)", callback_data="promo_type_rubles", icon_custom_emoji_id=EMOJI["dollar"])],
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['gift'], '🎁')} Бонусный баланс (₽)", callback_data="promo_type_bonus", icon_custom_emoji_id=EMOJI["gift"])],
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
+        [InlineKeyboardButton(text="Скидка в процентах (%)", callback_data="promo_type_percent", icon_custom_emoji_id=EMOJI["discount"])],
+        [InlineKeyboardButton(text="Скидка в рублях (₽)", callback_data="promo_type_rubles", icon_custom_emoji_id=EMOJI["dollar"])],
+        [InlineKeyboardButton(text="Бонусный баланс (₽)", callback_data="promo_type_bonus", icon_custom_emoji_id=EMOJI["gift"])],
+        [InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
     ])
     
     await message.answer(
@@ -1261,9 +1260,9 @@ async def admin_ref_config(callback: CallbackQuery, state: FSMContext):
     
     await state.set_state(AdminRefBonusStates.waiting_type)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['dollar'], '💰')} Фиксированная сумма (₽)", callback_data="ref_type_rubles", icon_custom_emoji_id=EMOJI["dollar"])],
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['discount'], '%')} Процент от покупки (%)", callback_data="ref_type_percent", icon_custom_emoji_id=EMOJI["discount"])],
-        [InlineKeyboardButton(text=f"{emoji(EMOJI['arrow_back'], '❌')} Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
+        [InlineKeyboardButton(text="Фиксированная сумма (₽)", callback_data="ref_type_rubles", icon_custom_emoji_id=EMOJI["dollar"])],
+        [InlineKeyboardButton(text="Процент от покупки (%)", callback_data="ref_type_percent", icon_custom_emoji_id=EMOJI["discount"])],
+        [InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
     ])
     await callback.message.edit_text(
         f"{emoji(EMOJI['gift'], '🎁')} <b>Настройка реферального бонуса</b>\n\n"
