@@ -213,38 +213,33 @@ async def create_vip_link(user_id: int, days: int = 30):
         return None
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
-    if not PLATEGA_SHOP_ID or not PLATEGA_API_KEY:
+    if not PLATEGA_MERCHANT_ID or not PLATEGA_API_SECRET:
         print("[Platega] Не настроен магазин")
         return None
     
-    url = "https://app.platega.io/v2/transaction/process"
-    
-    headers = {
-        "Content-Type": "application/json",
-        "X-MerchantId": PLATEGA_SHOP_ID,
-        "X-Secret": PLATEGA_API_KEY
-    }
+    url = "https://app.platega.io/v1/payment"
     
     data = {
-        "command": "create",
-        "paymentDetails": {
-            "amount": float(amount),
-            "currency": "RUB"
-        },
+        "shop_id": PLATEGA_MERCHANT_ID,
+        "amount": amount,
+        "currency": "RUB",
+        "order_id": order_id,
         "description": f"Пополнение баланса пользователя {user_id}",
-        "return": f"{RAILWAY_URL}/payment/success",
-        "failedUrl": f"{RAILWAY_URL}/payment/fail",
-        "payload": f"order_{user_id}_{order_id}",
-        "paymentMethod": ["SBP", "CRYPTO"]
+        "success_url": f"{RAILWAY_URL}/payment/success",
+        "fail_url": f"{RAILWAY_URL}/payment/fail",
+        "webhook_url": f"{RAILWAY_URL}/webhook/platega"
     }
+    
+    sign_str = f"{PLATEGA_MERCHANT_ID}:{amount}:RUB:{order_id}:{PLATEGA_API_SECRET}"
+    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
     
     async with aiohttp.ClientSession() as session:
         try:
-            async with session.post(url, headers=headers, json=data) as resp:
+            async with session.post(url, json=data) as resp:
                 result = await resp.json()
                 print(f"[Platega] Ответ: {result}")
-                if result.get("url"):
-                    return result.get("url")
+                if result.get("status") == "success":
+                    return result.get("payment_url")
                 return None
         except Exception as e:
             print(f"[Platega] Ошибка: {e}")
