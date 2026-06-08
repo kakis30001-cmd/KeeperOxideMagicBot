@@ -39,20 +39,7 @@ _orig_getaddrinfo = socket.getaddrinfo
 
 def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if host == "pay.cryptobot.net":
-        try:
-            req = urllib.request.Request(
-                "https://1.1.1.1/dns-query?name=pay.cryptobot.net",
-                headers={"Accept": "application/dns-json"}
-            )
-            with urllib.request.urlopen(req, timeout=3) as response:
-                dns_data = json.loads(response.read().decode())
-                if "Answer" in dns_data:
-                    ips = [item["data"] for item in dns_data["Answer"] if item["type"] == 1]
-                    if ips:
-                        return _orig_getaddrinfo(ips[0], port, family, type, proto, flags)
-        except Exception as e:
-            print(f"[DNS Патч] Резервный запрос не удался: {e}", flush=True)
-            
+        return _orig_getaddrinfo("104.26.10.154", port, family, type, proto, flags)
     return _orig_getaddrinfo(host, port, family, type, proto, flags)
 
 socket.getaddrinfo = _patched_getaddrinfo
@@ -172,11 +159,14 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         "currency_type": "fiat",
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
         "description": f"Пополнение баланса №{order_id}",
-        "payload": f"{user_id}_{amount}" 
+        "payload": f"{user_id}_{amount}"
     }
     
+    from aiohttp.resolver import ThreadedResolver
+    connector = aiohttp.TCPConnector(resolver=ThreadedResolver())
+    
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
