@@ -405,7 +405,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         ])
         
         await message.answer(
-            f"✨ <b>Сумма пополнения: {amount} ₽</b>\n\nВыберите предпочтительный метод оплаты:",
+            f"f"{tg_emoji(STICKERS['balance_icon'], '💰')} <b>Сумма пополнения: {amount} ₽</b>\n\nВыберите предпочтительный метод оплаты:",
             parse_mode="HTML",
             reply_markup=kb
         )
