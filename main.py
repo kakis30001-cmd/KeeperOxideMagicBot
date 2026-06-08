@@ -32,6 +32,28 @@ from database import (
     get_setting, update_setting
 )
 
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host == "pay.cryptobot.net":
+        try:
+            req = urllib.request.Request(
+                "https://1.1.1.1/dns-query?name=pay.cryptobot.net",
+                headers={"Accept": "application/dns-json"}
+            )
+            with urllib.request.urlopen(req, timeout=3) as response:
+                dns_data = json.loads(response.read().decode())
+                if "Answer" in dns_data:
+                    ips = [item["data"] for item in dns_data["Answer"] if item["type"] == 1]
+                    if ips:
+                        return _orig_getaddrinfo(ips[0], port, family, type, proto, flags)
+        except Exception as e:
+            print(f"[DNS Патч] Резервный запрос не удался: {e}", flush=True)
+            
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+socket.getaddrinfo = _patched_getaddrinfo
+
 STICKERS = {
     "welcome": "5388795032775968174",
     "magic": "5474144592817318927",
@@ -134,38 +156,36 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
+async def create_crypto_payment(amount: int, order_id: str) -> str:
     url = "https://pay.cryptobot.net/api/createInvoice"
-    headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
-
-    payload_str = f"{user_id}_{amount}"
+    
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN
+    }
     
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
         "currency_type": "fiat",
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
-        "description": f"Пополнение баланса №{order_id}",
-        "payload": payload_str
+        "description": f"Пополнение баланса №{order_id}"
     }
     
-    print(f"[CryptoBot] Отправка запроса через requests поток для заказа {order_id}...", flush=True)
-    
     try:
-        response = await asyncio.to_thread(
-            requests.post, url, headers=headers, json=payload, timeout=8
-        )
-        print(f"[CryptoBot] Ответ получен. Статус: {response.status_code}", flush=True)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("ok"):
-                return data["result"]["pay_url"]
-            else:
-                print(f"[CryptoBot] Ошибка API: {data}", flush=True)
-        else:
-            print(f"[CryptoBot] Ошибка сервера: {response.text}", flush=True)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if data.get("ok"):
+                        return data["result"]["pay_url"]
+                    else:
+                        print(f"[CryptoBot] Ошибка API: {data}", flush=True)
+                else:
+                    print(f"[CryptoBot] Ошибка сервера: {resp.status}", flush=True)
+                    
     except Exception as e:
-        print(f"[CryptoBot] Исключение при запросе: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка сети: {e}", flush=True)
+        
     return None
 
 def get_main_keyboard():
