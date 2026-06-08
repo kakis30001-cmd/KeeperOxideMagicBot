@@ -14,7 +14,6 @@ from aiogram.fsm.context import FSMContext
 import aiohttp
 
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
-# Попытка импортировать CRYPTO_PAY_TOKEN из config, если его там нет - используем пустую заглушку
 try:
     from config import CRYPTO_PAY_TOKEN
 except ImportError:
@@ -93,7 +92,7 @@ class AddKeysStates(StatesGroup):
 
 class DepositStates(StatesGroup):
     waiting_amount = State()
-    waiting_method = State() # Новое состояние для выбора СБП или Крипты
+    waiting_method = State() 
 
 class AdminAddBalanceStates(StatesGroup):
     waiting_user_id = State()
@@ -116,7 +115,7 @@ class AdminRefBonusStates(StatesGroup):
     waiting_value = State()
 
 class AdminCustomTextStates(StatesGroup):
-    waiting_text = State() # Состояние для изменения текста ручной продажи
+    waiting_text = State() 
 
 async def create_vip_link(user_id: int, days: int = 30):
     try:
@@ -132,7 +131,6 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-# Интеграция с CryptoBot API для создания счета криптовалютой
 async def create_crypto_payment(amount: int, order_id: str) -> str:
     url = "https://pay.cryptobot.net/api/createInvoice"
     headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
@@ -346,7 +344,6 @@ async def profile_history(callback: CallbackQuery):
 
 @dp.callback_query(lambda c: c.data == "profile_deposit")
 async def profile_deposit(callback: CallbackQuery, state: FSMContext):
-    # ПРОВЕРКА РЕЖИМА МАГАЗИНА ПЕРЕД ПОПОЛНЕНИЕМ
     shop_mode = await get_setting("shop_mode")
     if shop_mode == "custom":
         custom_text = await get_setting("custom_text")
@@ -366,7 +363,6 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
 
 @dp.message(DepositStates.waiting_amount)
 async def process_deposit_amount(message: Message, state: FSMContext):
-    # Дополнительная проверка режима магазина на этапе ввода суммы
     shop_mode = await get_setting("shop_mode")
     if shop_mode == "custom":
         custom_text = await get_setting("custom_text")
@@ -386,7 +382,6 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.set_state(DepositStates.waiting_method)
         
-        # Интерактивный выбор метода оплаты
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="💳 СБП (Platega)", callback_data="pay_method_platega"),
@@ -519,7 +514,6 @@ async def process_activate_promocode(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: CallbackQuery):
-    # ПРОВЕРКА РЕЖИМА МАГАЗИНА ПЕРЕД ПОКУПКОЙ
     shop_mode = await get_setting("shop_mode")
     if shop_mode == "custom":
         custom_text = await get_setting("custom_text")
