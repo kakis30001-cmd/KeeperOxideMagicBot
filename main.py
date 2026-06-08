@@ -33,7 +33,6 @@ from database import (
     get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders
 )
 
-# ========== АНИМИРОВАННЫЕ PREMIUM СТИКЕРЫ ==========
 EMOJI = {
     "crypto": "5361914370068613491",
     "sbp": "5363972466857252756",
@@ -69,6 +68,11 @@ EMOJI = {
     "cat_wink": "5199427253225667842",
     "cat_dance": "5359444458930718519",
     "joystick": "5870717606364713020",
+    "notification": "5870886806601338791",
+    "pin": "5870930744116776638",
+    "crown": "5807868868886009920",
+    "new": "5886306834410640699",
+    "edit": "5985774024968379294",
 }
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
@@ -239,7 +243,6 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         print(f"[CryptoBot] Ошибка: {result.get('error')}")
         return None
 
-# ========== КЛАВИАТУРЫ С PREMIUM ЭМОДЗИ (без текстовых эмодзи) ==========
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -275,7 +278,7 @@ def get_admin_keyboard(shop_mode="auto"):
         ],
         [
             InlineKeyboardButton(text="Выдать баланс", callback_data="admin_add_balance", icon_custom_emoji_id=EMOJI["dollar"]),
-            InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=EMOJI["phone"])
+            InlineKeyboardButton(text="Сделать рассылку", callback_data="admin_broadcast", icon_custom_emoji_id=EMOJI["notification"])
         ],
         [
             InlineKeyboardButton(text="Создать промокод", callback_data="admin_create_promocode", icon_custom_emoji_id=EMOJI["discount"]),
@@ -286,7 +289,7 @@ def get_admin_keyboard(shop_mode="auto"):
         ],
         [
             InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_mode"),
-            InlineKeyboardButton(text="Текст кастома", callback_data="admin_change_custom_text", icon_custom_emoji_id=EMOJI["document"])
+            InlineKeyboardButton(text="Текст кастома", callback_data="admin_change_custom_text", icon_custom_emoji_id=EMOJI["edit"])
         ],
         [
             InlineKeyboardButton(text="Управление товарами", callback_data="admin_manage_products", icon_custom_emoji_id=EMOJI["store"]),
@@ -724,7 +727,7 @@ async def admin_change_custom_text(callback: CallbackQuery, state: FSMContext):
     current_text = await get_setting("custom_text")
     await state.set_state(AdminCustomTextStates.waiting_text)
     await callback.message.answer(
-        f"{emoji(EMOJI['document'], '📝')} <b>Текущий текст ручной продажи:</b>\n\n{current_text}\n\n"
+        f"{emoji(EMOJI['edit'], '📝')} <b>Текущий текст ручной продажи:</b>\n\n{current_text}\n\n"
         f"Введите новый текст, который будут видеть пользователи в режиме ручной продажи (поддерживается HTML разметка):",
         parse_mode="HTML"
     )
@@ -753,7 +756,7 @@ async def admin_add_product(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(AddProductStates.waiting_name)
     await callback.message.edit_text(
-        f"{emoji(EMOJI['document'], '📝')} Введите название товара:",
+        f"{emoji(EMOJI['edit'], '📝')} Введите название товара:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     )
@@ -1043,7 +1046,7 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(AdminBroadcastStates.waiting_message)
     await callback.message.edit_text(
-        f"{emoji(EMOJI['phone'], '📢')} <b>Рассылка сообщения</b>\n\n"
+        f"{emoji(EMOJI['notification'], '📢')} <b>Рассылка сообщения</b>\n\n"
         "Введите текст сообщения для рассылки всем пользователям:\n\n"
         "Поддерживается HTML разметка",
         parse_mode="HTML",
@@ -1060,7 +1063,7 @@ async def process_broadcast(message: Message, state: FSMContext):
     users = await get_all_users()
     
     await message.answer(
-        f"{emoji(EMOJI['phone'], '📢')} <b>Начинаю рассылку...</b>\n\n"
+        f"{emoji(EMOJI['notification'], '📢')} <b>Начинаю рассылку...</b>\n\n"
         f"{emoji(EMOJI['person'], '👥')} Всего пользователей: <code>{len(users)}</code>",
         parse_mode="HTML"
     )
@@ -1097,7 +1100,7 @@ async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(AdminCreatePromocodeStates.waiting_code)
     await callback.message.edit_text(
-        f"{emoji(EMOJI['discount'], '🎫')} <b>Создание промокода</b>\n\n"
+        f"{emoji(EMOJI['new'], '🎫')} <b>Создание промокода</b>\n\n"
         "Введите название промокода (только латиница и цифры, без пробелов):\n\n"
         "Пример: <code>SUMMER2024</code>",
         parse_mode="HTML",
@@ -1194,7 +1197,7 @@ async def create_promocode_max_uses(message: Message, state: FSMContext):
         shop_mode = await get_setting("shop_mode")
         await message.answer(
             f"{emoji(EMOJI['check'], '✅')} <b>Промокод успешно создан!</b>\n\n"
-            f"{emoji(EMOJI['discount'], '🎫')} Код: <code>{code}</code>\n"
+            f"{emoji(EMOJI['new'], '🎫')} Код: <code>{code}</code>\n"
             f"{emoji(EMOJI['clock'], '📊')} Тип: {type_text}\n"
             f"{emoji(EMOJI['repeat'], '🔢')} Максимум активаций: <code>{max_uses}</code>",
             parse_mode="HTML",
@@ -1330,7 +1333,7 @@ async def admin_stats(callback: CallbackQuery):
     stats = await get_stats()
     shop_mode = await get_setting("shop_mode")
     await callback.message.edit_text(
-        f"{emoji(EMOJI['clock'], '📊')} <b>Статистика</b>\n\n"
+        f"{emoji(EMOJI['crown'], '📊')} <b>Статистика</b>\n\n"
         f"{emoji(EMOJI['person'], '👥')} Пользователей: <code>{stats['users']}</code>\n"
         f"{emoji(EMOJI['dollar'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
         f"{emoji(EMOJI['key'], '🔑')} Выдано ключей: <code>{stats['keys_sold']}</code>\n"
