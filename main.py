@@ -21,6 +21,9 @@ from aiogram.fsm.context import FSMContext
 import aiohttp
 import requests  
 
+from aiosend import CryptoPay, TESTNET, MAINNET
+from aiosend.types import Invoice
+
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 try:
     from config import CRYPTO_PAY_TOKEN
@@ -54,7 +57,7 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
                     if ips:
                         return _orig_getaddrinfo(ips[0], port, family, type, proto, flags)
         except Exception as e:
-            print(f"[DNS Патч] Ошибка динамического разрешения, откат на резерв: {e}", flush=True)
+            print(f"[DNS Патч] Ошибка: {e}", flush=True)
             return _orig_getaddrinfo("172.67.73.187", port, family, type, proto, flags)
             
     return _orig_getaddrinfo(host, port, family, type, proto, flags)
@@ -110,6 +113,8 @@ flask_app = Flask(__name__)
 pending_payments = {}
 main_loop = None  
 
+cp = CryptoPay(CRYPTO_PAY_TOKEN, TESTNET)  
+
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
 
@@ -163,65 +168,48 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-import requests
-
-import http.client
-import json
-import ssl
-
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    ip_address = "104.26.10.154" 
-    path = "/api/createInvoice"
+    if not CRYPTO_PAY_TOKEN:
+        print("[CryptoPay] Нет токена")
+        return None
     
-    payload = {
-        "amount": str(amount),
-        "fiat": "RUB",
-        "currency_type": "fiat",
-        "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
-        "description": f"Пополнение баланса №{order_id}",
-        "payload": f"{user_id}_{amount}"
-    }
-    
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Content-Type": "application/json",
-        "Host": "pay.cryptobot.net", 
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    def make_raw_request():
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        
-        conn = http.client.HTTPSConnection(ip_address, 443, context=context, timeout=10)
-        try:
-            conn.request("POST", path, json.dumps(payload), headers)
-            response = conn.getresponse()
-            data = response.read().decode()
-            conn.close()
-            return data
-        except Exception as e:
-            return e
-
     try:
-        response_data = await asyncio.to_thread(make_raw_request)
-        
-        if isinstance(response_data, Exception):
-            print(f"[CryptoBot] Ошибка соединения: {response_data}", flush=True)
-            return None
-            
-        data = json.loads(response_data)
-        if data.get("ok"):
-            return data["result"]["pay_url"]
-        else:
-            print(f"[CryptoBot] Ошибка API: {data}", flush=True)
-            
+        invoice = await cp.create_invoice(
+            amount=float(amount),
+            asset="USDT",
+            description=f"Пополнение баланса #{order_id}",
+            payload=f"{user_id}_{amount}"
+        )
+        return invoice.mini_app_invoice_url
     except Exception as e:
-        print(f"[CryptoBot] Ошибка выполнения: {e}", flush=True)
-        
-    return None
-    
+        print(f"[CryptoPay] Ошибка: {e}")
+        return None
+
+@cp.invoice_paid()
+async def handle_crypto_payment(invoice: Invoice, message: Message = None):
+    """Автоматическая выдача при оплате через CryptoPay"""
+    try:
+        payload = invoice.payload
+        if payload:
+            user_id_str, rub_amount_str = payload.split("_")
+            user_id = int(user_id_str)
+            rub_amount = int(rub_amount_str)
+            
+            current_balance = await get_balance(user_id)
+            new_balance = current_balance + rub_amount
+            await update_user_balance(user_id, new_balance)
+            
+            await bot.send_message(
+                chat_id=user_id,
+                text=f"✅ {tg_emoji(STICKERS['product_selected'], '✨')} <b>Оплата успешно получена!</b>\n\n"
+                     f"💰 Ваш баланс пополнен на <b>{rub_amount} ₽</b>\n"
+                     f"📊 Текущий баланс: <code>{new_balance} ₽</code>",
+                parse_mode="HTML"
+            )
+            print(f"[CryptoPay] Выдано {rub_amount} руб пользователю {user_id}")
+    except Exception as e:
+        print(f"[CryptoPay] Ошибка выдачи: {e}")
+
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -513,7 +501,7 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"{tg_emoji(STICKERS['payment_method'], '💳')} <b>Оплата через {method_name}</b>\n\n"
         f"Сумма к оплате: <code>{amount} ₽</code>\n\n"
-        f"🔗 <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТOБЫ ОПЛАТИТЬ</a>\n\n"
+        f"🔗 <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
         f"🆔 Транзакция: <code>{order_id}</code>\n\n"
         f"⚡ Баланс обновится автоматически в течение 5 секунд после оплаты!",
         parse_mode="HTML",
@@ -1011,7 +999,7 @@ async def admin_broadcast(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminBroadcastStates.waiting_message)
     await callback.message.edit_text(
         "📢 <b>Рассылка сообщения</b>\n\n"
-        "Введите text сообщения для рассылки всем пользователям:\n\n"
+        "Введите текст сообщения для рассылки всем пользователям:\n\n"
         "Поддерживается HTML разметка",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=BUTTON_EMOJI["back"])]])
@@ -1163,7 +1151,7 @@ async def create_promocode_max_uses(message: Message, state: FSMContext):
             f"✅ <b>Промокод успешно создан!</b>\n\n"
             f"🎫 Код: <code>{code}</code>\n"
             f"📊 Тип: {type_text}\n"
-            f"🔢 : <code>{max_uses}</code>",
+            f"🔢 Максимум активаций: <code>{max_uses}</code>",
             parse_mode="HTML",
             reply_markup=get_admin_keyboard(shop_mode)
         )
@@ -1318,59 +1306,9 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_keyboard(shop_mode)
     )
     await callback.answer()
-    
-async def process_successful_payment(user_id: int, rub_amount: int):
-    try:
-        current_balance = await get_balance(user_id)
-        new_balance = current_balance + rub_amount
-        await update_user_balance(user_id, new_balance)
-        
-        await bot.send_message(
-            chat_id=user_id,
-            text=f"✅ {tg_emoji(STICKERS['product_selected'], '✨')} <b>Оплата успешно получена!</b>\n\n"
-                 f"💰 Ваш игровой баланс пополнен на <b>{rub_amount} ₽</b>\n"
-                 f"📊 Актуальный профиль: <code>{new_balance} ₽</code>",
-            parse_mode="HTML"
-        )
-        print(f"[Выдача] Успешно начислен баланс {rub_amount} руб для пользователя {user_id}", flush=True)
-    except Exception as e:
-        print(f"[Выдача] Ошибка уведомления пользователя {user_id}: {e}", flush=True)
-
 
 @flask_app.route("/webhook/payment", methods=["POST"])
 def payment_webhook():
-    return jsonify({"status": "ok"}), 200
-
-@flask_app.route("/webhook/crypto", methods=["POST"])
-def crypto_webhook():
-    signature = request.headers.get("crypto-pay-api-signature")
-    if not signature:
-        return "Unauthorized", 401
-        
-    body = request.data
-    secret = hashlib.sha256(CRYPTO_PAY_TOKEN.encode()).digest()
-    calc_signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
-    
-    if signature != calc_signature:
-        print("[Webhook] Попытка подделки подписи заблокирована!", flush=True)
-        return "Forbidden", 403
-        
-    data = request.json
-    if data.get("update_type") == "invoice_paid":
-        payload_str = data["update_object"].get("payload")
-        if payload_str:
-            try:
-                user_id_str, rub_amount_str = payload_str.split("_")
-                user_id = int(user_id_str)
-                rub_amount = int(rub_amount_str)
-                
-                if main_loop:
-                    asyncio.run_coroutine_threadsafe(
-                        process_successful_payment(user_id, rub_amount), main_loop
-                    )
-            except Exception as e:
-                print(f"[Webhook] Ошибка разбора payload: {e}", flush=True)
-                
     return jsonify({"status": "ok"}), 200
 
 @flask_app.route("/payment/success", methods=["GET"])
@@ -1391,16 +1329,22 @@ def run_flask():
 
 async def main():
     global main_loop
-    main_loop = asyncio.get_running_loop() 
+    main_loop = asyncio.get_running_loop()
     
     await connect_db()
     await bot.delete_webhook(drop_pending_updates=True)
+    
+    crypto_task = asyncio.create_task(cp.start_polling())
     
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
     
     print("Бот успешно запущен и готов к работе!", flush=True)
-    await dp.start_polling(bot)
+    
+    await asyncio.gather(
+        dp.start_polling(bot),
+        crypto_task
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
