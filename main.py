@@ -33,6 +33,8 @@ from database import (
     get_setting, update_setting
 )
 
+YOUR_SITE_URL = RAILWAY_URL
+
 _orig_getaddrinfo = socket.getaddrinfo
 
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api"
