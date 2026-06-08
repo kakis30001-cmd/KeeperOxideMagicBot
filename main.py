@@ -1387,47 +1387,6 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-@flask_app.route("/webhook/crypto", methods=["POST"])
-def crypto_webhook():
-    signature = request.headers.get("crypto-pay-api-signature")
-    if not signature:
-        return "Unauthorized", 401
-        
-    body = request.data
-    secret = hashlib.sha256(CRYPTO_PAY_TOKEN.encode()).digest()
-    calc_signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
-    
-    if signature != calc_signature:
-        print("[Webhook] Неверная подпись!")
-        return "Forbidden", 403
-        
-    data = request.json
-    if data.get("update_type") == "invoice_paid":
-        payload_str = data["update_object"].get("payload")
-        if payload_str:
-            try:
-                user_id_str, rub_amount_str = payload_str.split("_")
-                user_id = int(user_id_str)
-                rub_amount = int(rub_amount_str)
-                
-                async def process():
-                    current = await get_balance(user_id)
-                    await update_user_balance(user_id, current + rub_amount)
-                    await bot.send_message(
-                        user_id,
-                        f"✅ <b>Оплата успешно получена!</b>\n\n"
-                        f"💰 Ваш баланс пополнен на <b>{rub_amount} ₽</b>\n"
-                        f"📊 Текущий баланс: <code>{current + rub_amount} ₽</code>",
-                        parse_mode="HTML"
-                    )
-                    print(f"[CryptoPay] Выдано {rub_amount} руб пользователю {user_id}")
-                
-                asyncio.run_coroutine_threadsafe(process(), main_loop)
-            except Exception as e:
-                print(f"[Webhook] Ошибка: {e}")
-                
-    return jsonify({"status": "ok"}), 200
-
 @flask_app.route("/payment/success", methods=["GET"])
 def payment_success():
     return "Оплата прошла успешно! Можете вернуться в бота.", 200
