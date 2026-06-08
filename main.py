@@ -161,11 +161,13 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
+    ip = "104.26.10.154" 
+    url = f"https://{ip}/api/createInvoice"
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "User-Agent": "Mozilla/5.0 (compatible; Bot/1.0)"
+        "User-Agent": "Mozilla/5.0",
+        "Host": "pay.cryptobot.net" 
     }
     
     payload = {
@@ -178,14 +180,14 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     }
     
     import httpx
-    async with httpx.AsyncClient(http2=True, verify=True) as client:
+    async with httpx.AsyncClient(verify=True) as client:
         try:
             response = await client.post(url, headers=headers, json=payload, timeout=10.0)
             if response.status_code == 200:
                 data = response.json()
                 if data.get("ok"):
                     return data["result"]["pay_url"]
-            print(f"[CryptoBot] Ошибка API: {response.text}", flush=True)
+            print(f"[CryptoBot] Ошибка API: {response.status_code}", flush=True)
         except Exception as e:
             print(f"[CryptoBot] Ошибка httpx: {e}", flush=True)
             
