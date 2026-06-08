@@ -440,6 +440,41 @@ async def profile_referral(callback: CallbackQuery):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Назад", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]]))
     await callback.answer()
 
+@flask_app.route("/webhook/platega", methods=["POST"])
+def platega_webhook():
+    data = request.get_json()
+    print(f"[Platega Webhook] Получены данные: {data}")
+    
+    status = data.get("status")
+    order_id = data.get("order_id")
+    amount = int(data.get("amount", 0))
+    
+    if status == "success" and order_id:
+        user_id = None
+        for uid, info in pending_payments.items():
+            if info.get("order_id") == order_id:
+                user_id = uid
+                break
+        
+        if user_id:
+            async def process():
+                current = await get_balance(user_id)
+                await update_user_balance(user_id, current + amount)
+                await bot.send_message(
+                    user_id,
+                    f"{emoji(EMOJI['check'], '✅')} <b>Баланс пополнен через СБП!</b>\n\n"
+                    f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n"
+                    f"{emoji(EMOJI['almaz'], '📊')} Новый баланс: <code>{current + amount} ₽</code>",
+                    parse_mode="HTML"
+                )
+                if user_id in pending_payments:
+                    del pending_payments[user_id]
+            
+            asyncio.run_coroutine_threadsafe(process(), main_loop)
+            return jsonify({"status": "ok"}), 200
+    
+    return jsonify({"status": "error"}), 400
+
 @dp.callback_query(lambda c: c.data == "profile_history")
 async def profile_history(callback: CallbackQuery):
     purchases = await get_user_purchases(callback.from_user.id)
