@@ -163,12 +163,8 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-import http.client
-import json
-import ssl
-
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    host = "pay.cryptobot.net"
+    ip_address = "104.26.10.154" 
     path = "/api/createInvoice"
     
     payload = {
@@ -183,17 +179,16 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
         "Content-Type": "application/json",
-        "User-Agent": "python-script/1.0"
+        "Host": "pay.cryptobot.net", 
+        "User-Agent": "Mozilla/5.0"
     }
 
     def make_raw_request():
-        # Создаем SSL-контекст, который отключает проверку сертификатов, 
-        # если возникают проблемы с доверием (это самый "тупой" и надежный способ)
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
         
-        conn = http.client.HTTPSConnection(host, 443, context=context, timeout=10)
+        conn = http.client.HTTPSConnection(ip_address, 443, context=context, timeout=10)
         try:
             conn.request("POST", path, json.dumps(payload), headers)
             response = conn.getresponse()
@@ -207,7 +202,7 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         response_data = await asyncio.to_thread(make_raw_request)
         
         if isinstance(response_data, Exception):
-            print(f"[CryptoBot] Ошибка http.client: {response_data}", flush=True)
+            print(f"[CryptoBot] Ошибка соединения: {response_data}", flush=True)
             return None
             
         data = json.loads(response_data)
