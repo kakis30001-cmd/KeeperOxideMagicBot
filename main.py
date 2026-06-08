@@ -161,11 +161,17 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
     return None
 
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    url = "https://pay.cryptobot.net/api/createInvoice"
+    # Используем один из Anycast IP-адресов Cloudflare для pay.cryptobot.net напрямую
+    ip_address = "104.26.10.154" 
+    domain = "pay.cryptobot.net"
+    
+    url = f"https://{ip_address}/api/createInvoice"
     
     headers = {
         "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+        # Критически важно: передаем реальный домен в заголовке Host
+        "Host": domain,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
     
     payload = {
@@ -179,11 +185,22 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     
     def make_request():
         import requests
-        return requests.post(url, headers=headers, json=payload, timeout=10)
-    
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=10, verify=False)
+            return response
+        except Exception as e:
+            return e
+
     try:
         resp = await asyncio.to_thread(make_request)
         
+        if isinstance(resp, Exception):
+             print(f"[CryptoBot] Критическая ошибка requests: {resp}", flush=True)
+             return None
+             
         if resp.status_code == 200:
             data = resp.json()
             if data.get("ok"):
@@ -191,10 +208,10 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
             else:
                 print(f"[CryptoBot] Ошибка API: {data}", flush=True)
         else:
-            print(f"[CryptoBot] Ошибка сервера: {resp.status_code}", flush=True)
+            print(f"[CryptoBot] Ошибка сервера: {resp.status_code} - {resp.text}", flush=True)
                 
     except Exception as e:
-        print(f"[CryptoBot] Ошибка сети (requests): {e}", flush=True)
+        print(f"[CryptoBot] Ошибка выполнения потока: {e}", flush=True)
         
     return None
     
