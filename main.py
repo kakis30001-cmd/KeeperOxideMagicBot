@@ -216,21 +216,26 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
         print("[Platega] Не настроен магазин")
         return None
     
-    url = "https://platega.io/api/v1/payment"  # <-- ИСПРАВЛЕНО
+    url = "https://app.platega.io/v2/transaction/process"
     
-    data = {
-        "shop_id": PLATEGA_SHOP_ID,
-        "amount": amount,
-        "currency": "RUB",
-        "order_id": order_id,
-        "description": f"Пополнение баланса пользователя {user_id}",
-        "success_url": f"{RAILWAY_URL}/payment/success",
-        "fail_url": f"{RAILWAY_URL}/payment/fail",
-        "webhook_url": f"{RAILWAY_URL}/webhook/platega"
-    }
-    
-    sign_str = f"{PLATEGA_SHOP_ID}:{amount}:RUB:{order_id}:{PLATEGA_API_KEY}"
-    data["sign"] = hashlib.md5(sign_str.encode()).hexdigest()
+    headers = {
+    "Content-Type": "application/json",
+    "X-MerchantId": PLATEGA_SHOP_ID,
+    "X-Secret": PLATEGA_API_KEY
+}
+
+data = {
+    "command": "create",
+    "paymentDetails": {
+        "amount": float(amount),
+        "currency": "RUB"
+    },
+    "description": f"Пополнение баланса пользователя {user_id}",
+    "return": f"{RAILWAY_URL}/payment/success",
+    "failedUrl": f"{RAILWAY_URL}/payment/fail",
+    "payload": f"order_{user_id}_{order_id}",
+    "paymentMethod": ["SBP", "CRYPTO"]
+}
     
     async with aiohttp.ClientSession() as session:
         try:
