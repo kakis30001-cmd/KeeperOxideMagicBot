@@ -4,6 +4,10 @@ import uuid
 import socket
 import ssl  
 import hashlib
+import requests
+import hmac
+import json
+import aiohttp
 from datetime import datetime, timedelta
 from threading import Thread
 from flask import Flask, request, jsonify
@@ -13,7 +17,6 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-import aiohttp
 
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
 try:
@@ -133,37 +136,35 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
-async def create_crypto_payment(amount: int, order_id: str) -> str:
+async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     url = "https://pay.cryptobot.net/api/createInvoice"
     headers = {"Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN}
+    
+    payload_str = f"{user_id}_{amount}"
+    
     payload = {
         "amount": str(amount),
         "fiat": "RUB",
         "currency_type": "fiat",
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
-        "description": f"Пополнение баланса №{order_id}"
+        "description": f"Пополнение баланса №{order_id}",
+        "payload": payload_str
     }
     
-    print(f"[CryptoBot] Запуск потокового резолвера для {url}...", flush=True)
-    
     try:
-        resolver = aiohttp.ThreadedResolver()
-        connector = aiohttp.TCPConnector(resolver=resolver, ssl=True)
+        response = await asyncio.to_thread(requests.post, url, headers=headers, json=payload, timeout=10)
         
-        async with aiohttp.ClientSession(connector=connector, trust_env=True) as session:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                print(f"[CryptoBot] Успешное подключение! Статус-код: {resp.status}", flush=True)
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("ok"):
-                        return data["result"]["pay_url"]
-                    else:
-                        print(f"[CryptoBot] Ошибка API CryptoBot: {data}", flush=True)
-                else:
-                    print(f"[CryptoBot] Ошибка сервера: {await resp.text()}", flush=True)
-                    
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("ok"):
+                return data["result"]["pay_url"]
+            else:
+                print(f"[CryptoBot] Ошибка API: {data}", flush=True)
+        else:
+            print(f"[CryptoBot] Ошибка сервера: {response.text}", flush=True)
+            
     except Exception as e:
-        print(f"[CryptoBot] Ошибка через ThreadedResolver: {e}", flush=True)
+        print(f"[CryptoBot] Критическая ошибка requests: {e}", flush=True)
         
     return None
 def get_main_keyboard():
