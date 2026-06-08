@@ -39,7 +39,21 @@ _orig_getaddrinfo = socket.getaddrinfo
 
 def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if host == "pay.cryptobot.net":
-        return _orig_getaddrinfo("104.26.10.154", port, family, type, proto, flags)
+        try:
+            req = urllib.request.Request(
+                "https://1.1.1.1/dns-query?name=pay.cryptobot.net",
+                headers={"Accept": "application/dns-json"}
+            )
+            with urllib.request.urlopen(req, timeout=3) as response:
+                dns_data = json.loads(response.read().decode())
+                if "Answer" in dns_data:
+                    ips = [item["data"] for item in dns_data["Answer"] if item["type"] == 1]
+                    if ips:
+                        return _orig_getaddrinfo(ips[0], port, family, type, proto, flags)
+        except Exception as e:
+            print(f"[DNS Патч] Ошибка динамического разрешения, откат на резерв: {e}", flush=True)
+            return _orig_getaddrinfo("172.67.73.187", port, family, type, proto, flags)
+            
     return _orig_getaddrinfo(host, port, family, type, proto, flags)
 
 socket.getaddrinfo = _patched_getaddrinfo
@@ -181,7 +195,7 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         print(f"[CryptoBot] Ошибка сети: {e}", flush=True)
         
     return None
-
+    
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
