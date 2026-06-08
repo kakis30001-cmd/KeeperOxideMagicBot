@@ -21,15 +21,7 @@ from aiogram.fsm.context import FSMContext
 import aiohttp
 import requests  
 
-from aiosend import CryptoPay, TESTNET, MAINNET
-from aiosend.types import Invoice
-
-from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET
-try:
-    from config import CRYPTO_PAY_TOKEN
-except ImportError:
-    CRYPTO_PAY_TOKEN = "YOUR_CRYPTO_BOT_TOKEN"
-
+from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, MERCHANT_ID, API_SECRET, CRYPTO_PAY_TOKEN
 from database import (
     connect_db, add_user, get_balance, get_all_products,
     add_product, add_keys_to_product, get_unused_key,
@@ -111,9 +103,7 @@ dp = Dispatcher(storage=MemoryStorage())
 flask_app = Flask(__name__)
 
 pending_payments = {}
-main_loop = None  
-
-cp = CryptoPay(CRYPTO_PAY_TOKEN, TESTNET)  
+main_loop = None
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_IDS
@@ -167,6 +157,7 @@ async def create_vip_link(user_id: int, days: int = 30):
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
+
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
     if not CRYPTO_PAY_TOKEN:
         return None
@@ -195,31 +186,6 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         except Exception as e:
             print(f"[CryptoPay] Ошибка: {e}")
             return None
-
-@cp.invoice_paid()
-async def handle_crypto_payment(invoice: Invoice, message: Message = None):
-    """Автоматическая выдача при оплате через CryptoPay"""
-    try:
-        payload = invoice.payload
-        if payload:
-            user_id_str, rub_amount_str = payload.split("_")
-            user_id = int(user_id_str)
-            rub_amount = int(rub_amount_str)
-            
-            current_balance = await get_balance(user_id)
-            new_balance = current_balance + rub_amount
-            await update_user_balance(user_id, new_balance)
-            
-            await bot.send_message(
-                chat_id=user_id,
-                text=f"✅ {tg_emoji(STICKERS['product_selected'], '✨')} <b>Оплата успешно получена!</b>\n\n"
-                     f"💰 Ваш баланс пополнен на <b>{rub_amount} ₽</b>\n"
-                     f"📊 Текущий баланс: <code>{new_balance} ₽</code>",
-                parse_mode="HTML"
-            )
-            print(f"[CryptoPay] Выдано {rub_amount} руб пользователю {user_id}")
-    except Exception as e:
-        print(f"[CryptoPay] Ошибка выдачи: {e}")
 
 def get_main_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -478,7 +444,9 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     
     order_id = str(uuid.uuid4())[:8]
-    pending_payments[callback.from_user.id] = {
+    user_id = callback.from_user.id
+    
+    pending_payments[user_id] = {
         "amount": amount,
         "order_id": order_id,
         "status": "pending"
@@ -490,13 +458,13 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"⏳ <b>Создаем безопасную сессию СБП...</b>\nПожалуйста, подождите.", parse_mode="HTML"
         )
-        payment_url = await create_platega_payment(amount, order_id, callback.from_user.id)
+        payment_url = await create_platega_payment(amount, order_id, user_id)
         method_name = "Platega (СБП)"
     else:
         await callback.message.edit_text(
             f"⏳ <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
         )
-        payment_url = await create_crypto_payment(amount, order_id, callback.from_user.id)
+        payment_url = await create_crypto_payment(amount, order_id, user_id)
         method_name = "Crypto Pay (Криптовалюта)"
     
     if not payment_url:
@@ -1322,6 +1290,47 @@ async def admin_back(callback: CallbackQuery, state: FSMContext):
 def payment_webhook():
     return jsonify({"status": "ok"}), 200
 
+@flask_app.route("/webhook/crypto", methods=["POST"])
+def crypto_webhook():
+    signature = request.headers.get("crypto-pay-api-signature")
+    if not signature:
+        return "Unauthorized", 401
+        
+    body = request.data
+    secret = hashlib.sha256(CRYPTO_PAY_TOKEN.encode()).digest()
+    calc_signature = hmac.new(secret, body, hashlib.sha256).hexdigest()
+    
+    if signature != calc_signature:
+        print("[Webhook] Неверная подпись!")
+        return "Forbidden", 403
+        
+    data = request.json
+    if data.get("update_type") == "invoice_paid":
+        payload_str = data["update_object"].get("payload")
+        if payload_str:
+            try:
+                user_id_str, rub_amount_str = payload_str.split("_")
+                user_id = int(user_id_str)
+                rub_amount = int(rub_amount_str)
+                
+                async def process():
+                    current = await get_balance(user_id)
+                    await update_user_balance(user_id, current + rub_amount)
+                    await bot.send_message(
+                        user_id,
+                        f"✅ <b>Оплата успешно получена!</b>\n\n"
+                        f"💰 Ваш баланс пополнен на <b>{rub_amount} ₽</b>\n"
+                        f"📊 Текущий баланс: <code>{current + rub_amount} ₽</code>",
+                        parse_mode="HTML"
+                    )
+                    print(f"[CryptoPay] Выдано {rub_amount} руб пользователю {user_id}")
+                
+                asyncio.run_coroutine_threadsafe(process(), main_loop)
+            except Exception as e:
+                print(f"[Webhook] Ошибка: {e}")
+                
+    return jsonify({"status": "ok"}), 200
+
 @flask_app.route("/payment/success", methods=["GET"])
 def payment_success():
     return "Оплата прошла успешно! Можете вернуться в бота.", 200
@@ -1345,17 +1354,11 @@ async def main():
     await connect_db()
     await bot.delete_webhook(drop_pending_updates=True)
     
-    crypto_task = asyncio.create_task(cp.start_polling())
-    
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
     
-    print("Бот успешно запущен и готов к работе!", flush=True)
-    
-    await asyncio.gather(
-        dp.start_polling(bot),
-        crypto_task
-    )
+    print("Бот запущен")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
