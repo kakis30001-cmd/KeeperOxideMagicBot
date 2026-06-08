@@ -8,7 +8,8 @@ CHANNEL_ID = -1003709565134
 
 MERCHANT_ID = os.getenv("MERCHANT_ID")
 API_SECRET = os.getenv("API_SECRET")
-CRYPTO_PAY_TOKEN = os.getenv("CRYPTO_PAY_TOKEN")
+CRYPTOBOT_TOKEN = os.getenv("CRYPTOBOT_TOKEN")
+YOUR_SITE_URL = os.getenv("YOUR_SITE_URL", RAILWAY_URL)
 
 if DB_URL:
     DB_URL = DB_URL.replace("postgresql+asyncpg://", "postgresql://")
