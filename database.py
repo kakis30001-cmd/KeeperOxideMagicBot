@@ -74,7 +74,37 @@ async def connect_db():
         """)
         
         await conn.execute("""
+        CREATE TABLE IF NOT EXISTS crypto_config(
+            id SERIAL PRIMARY KEY,
+            payment_mode TEXT DEFAULT 'auto',
+            currency TEXT DEFAULT 'USDT',
+            amount INTEGER DEFAULT 10,
+            manual_text TEXT DEFAULT 'Для оплаты криптовалютой переведите средства на кошелек USDT TRC20: TXXXX... и отправьте скриншот и хэш перевода администратору.',
+            manual_photo TEXT DEFAULT ''
+        )
+        """)
+        
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS crypto_payments(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
+            amount INTEGER NOT NULL,
+            currency TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            payment_id TEXT,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+        
+        await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
+        """)
+        
+        await conn.execute("""
+        INSERT INTO crypto_config (payment_mode, currency, amount, manual_text, manual_photo) 
+        VALUES ('auto', 'USDT', 10, 'Для оплаты криптовалютой переведите средства на кошелек USDT TRC20: TXXXX... и отправьте скриншот и хэш перевода администратору.', '') 
+        ON CONFLICT DO NOTHING
         """)
         
         try:
@@ -221,3 +251,35 @@ async def get_all_promocodes():
 async def delete_promocode(promocode_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
+
+async def get_crypto_config():
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT payment_mode, currency, amount, manual_text, manual_photo FROM crypto_config LIMIT 1")
+
+async def update_crypto_config(payment_mode: str, currency: str, amount: int, manual_text: str, manual_photo: str = None):
+    async with pool.acquire() as conn:
+        if manual_photo is not None:
+            await conn.execute("""
+                UPDATE crypto_config 
+                SET payment_mode = $1, currency = $2, amount = $3, manual_text = $4, manual_photo = $5
+            """, payment_mode, currency, amount, manual_text, manual_photo)
+        else:
+            await conn.execute("""
+                UPDATE crypto_config 
+                SET payment_mode = $1, currency = $2, amount = $3, manual_text = $4
+            """, payment_mode, currency, amount, manual_text)
+
+async def add_crypto_payment(user_id: int, product_id: int, amount: int, currency: str, payment_id: str):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO crypto_payments (user_id, product_id, amount, currency, payment_id, status)
+            VALUES ($1, $2, $3, $4, $5, 'pending')
+        """, user_id, product_id, amount, currency, payment_id)
+
+async def update_crypto_payment_status(payment_id: str, status: str):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE crypto_payments SET status = $1 WHERE payment_id = $2", status, payment_id)
+
+async def get_crypto_payment(payment_id: str):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT * FROM crypto_payments WHERE payment_id = $1", payment_id)
