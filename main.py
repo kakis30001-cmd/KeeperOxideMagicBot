@@ -141,17 +141,23 @@ async def create_crypto_payment(amount: int, order_id: str) -> str:
         "accepted_assets": ["USDT", "TON", "BTC", "ETH"],
         "description": f"Пополнение баланса №{order_id}"
     }
+    
+    print(f"[CryptoBot] Отправка запроса на сумму {amount} RUB для заказа {order_id}...", flush=True)
+    
     try:
         async with aiohttp.ClientSession(trust_env=True) as session:
             async with session.post(url, headers=headers, json=payload) as resp:
+                print(f"[CryptoBot] Ответ сервера получен. Статус-код: {resp.status}", flush=True)
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get("ok"):
                         return data["result"]["pay_url"]
+                    else:
+                        print(f"[CryptoBot] Ошибка в теле ответа API: {data}", flush=True)
                 else:
-                    print(f"CryptoBot вернул статус {resp.status}: {await resp.text()}")
+                    print(f"[CryptoBot] Ошибка сервера API: {await resp.text()}", flush=True)
     except Exception as e:
-        print(f"Ошибка создания крипто-счета: {e}")
+        print(f"[CryptoBot] Исключение при выполнении запроса: {e}", flush=True)
     return None
 
 def get_main_keyboard():
