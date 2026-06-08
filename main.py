@@ -21,9 +21,6 @@ from aiogram.fsm.context import FSMContext
 import aiohttp
 import requests  
 
-print(f"[Platega] MERCHANT_ID: {PLATEGA_MERCHANT_ID}")
-print(f"[Platega] API_SECRET: {PLATEGA_API_SECRET[:20]}...")
-
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, CRYPTOBOT_TOKEN, PLATEGA_MERCHANT_ID, PLATEGA_API_SECRET
 from database import (
     connect_db, add_user, get_balance, get_all_products,
@@ -35,6 +32,9 @@ from database import (
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
     get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders
 )
+
+print(f"[Platega] MERCHANT_ID: {PLATEGA_MERCHANT_ID}")
+print(f"[Platega] API_SECRET: {PLATEGA_API_SECRET[:20] if PLATEGA_API_SECRET else 'None'}...")
 
 EMOJI = {
     "crypto": "5361914370068613491",
