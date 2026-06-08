@@ -319,7 +319,7 @@ async def start_cmd(message: Message):
         f"{emoji(EMOJI['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
         f"{emoji(EMOJI['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n"
         f"{emoji(EMOJI['arrow_down'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>\n\n"
-        f"{emoji(EMOJI['heart'], '❤️')} {emoji(EMOJI['joy'], '😊')} {emoji(EMOJI['cat_wink'], '🐱')}"
+        f"{emoji(EMOJI['joy'], '😊')} 
     )
     await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
 
