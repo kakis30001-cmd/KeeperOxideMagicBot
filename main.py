@@ -213,6 +213,7 @@ async def create_vip_link(user_id: int, days: int = 30):
         return None
 
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
+async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     if not PLATEGA_MERCHANT_ID or not PLATEGA_API_SECRET:
         print("[Platega] Не настроен магазин")
         return None
@@ -232,8 +233,8 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
             "currency": "RUB"
         },
         "description": f"Заказ {order_id} для пользователя {user_id}",
-        "return": f"{RAILWAY_URL}/payment/success",
-        "failedUrl": f"{RAILWAY_URL}/payment/fail",
+        "return": "https://t.me/keepertest_bot",
+        "failedUrl": "https://t.me/keepertest_bot",
         "payload": f"order_{user_id}_{order_id}",
         "paymentMethod": ["SBP", "CRYPTO"]
     }
