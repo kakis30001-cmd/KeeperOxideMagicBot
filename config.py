@@ -6,9 +6,8 @@ DB_URL = os.getenv("DB_URL")
 RAILWAY_URL = os.getenv("RAILWAY_URL")
 CHANNEL_ID = -1003709565134
 
-PLATEGA_SHOP_ID = os.getenv("PLATEGA_SHOP_ID")
-PLATEGA_API_KEY = os.getenv("PLATEGA_API_KEY")
-CRYPTO_PAY_TOKEN = os.getenv("CRYPTO_PAY_TOKEN")
+MERCHANT_ID = os.getenv("MERCHANT_ID")
+API_SECRET = os.getenv("API_SECRET")
 
 if DB_URL:
     DB_URL = DB_URL.replace("postgresql+asyncpg://", "postgresql://")
