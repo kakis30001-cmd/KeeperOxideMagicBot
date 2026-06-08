@@ -98,6 +98,16 @@ async def connect_db():
         """)
         
         await conn.execute("""
+        CREATE TABLE IF NOT EXISTS bot_messages(
+            id SERIAL PRIMARY KEY,
+            message_key TEXT UNIQUE NOT NULL,
+            text TEXT,
+            photo_file_id TEXT,
+            updated_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+        
+        await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
         """)
         
@@ -105,6 +115,13 @@ async def connect_db():
         INSERT INTO crypto_config (payment_mode, currency, amount, manual_text, manual_photo) 
         VALUES ('auto', 'USDT', 10, 'Для оплаты криптовалютой переведите средства на кошелек USDT TRC20: TXXXX... и отправьте скриншот и хэш перевода администратору.', '') 
         ON CONFLICT DO NOTHING
+        """)
+        
+        await conn.execute("""
+        INSERT INTO bot_messages (message_key, text, photo_file_id) VALUES 
+        ('welcome', '✨ <b>Добро пожаловать в KeeperShop</b>\n\n✨ <b>Официальный магазин ключей Magic</b>\n\n👇 <b>Для покупки товаров используйте кнопки ниже</b>', NULL),
+        ('info', 'ℹ️ <b>ИНФОРМАЦИЯ</b>\n\n✨ <b>Официальный бот по продаже ключей для чит клиента Magic</b>\n\n💳 <b>Оплата:</b> Platega (СБП, Криптовалюта)\n\n📌 <b>Как пользоваться:</b>\n• Приобретите ключ через меню\n• После оплаты вы получите ключ и доступ в VIP канал\n\n📞 <b>КОНТАКТЫ:</b>\n• Техподдержка: @nikita1055\n• Основной канал: @keepersell\n• Отзывы: https://t.me/KeeperOtzivi\n\n⚖️ <b>ДОКУМЕНТЫ:</b>\n• <a href="https://telegra.ph/Politika-konfidencialnosti-04-01-26">Политика конфиденциальности</a>\n• <a href="https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19">Пользовательское соглашение</a>', NULL)
+        ON CONFLICT (message_key) DO NOTHING
         """)
         
         try:
@@ -283,3 +300,24 @@ async def update_crypto_payment_status(payment_id: str, status: str):
 async def get_crypto_payment(payment_id: str):
     async with pool.acquire() as conn:
         return await conn.fetchrow("SELECT * FROM crypto_payments WHERE payment_id = $1", payment_id)
+
+async def get_bot_message(message_key: str):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT text, photo_file_id FROM bot_messages WHERE message_key = $1", message_key)
+
+async def update_bot_message(message_key: str, text: str, photo_file_id: str = None):
+    async with pool.acquire() as conn:
+        if photo_file_id:
+            await conn.execute("""
+                UPDATE bot_messages SET text = $1, photo_file_id = $2, updated_at = NOW()
+                WHERE message_key = $3
+            """, text, photo_file_id, message_key)
+        else:
+            await conn.execute("""
+                UPDATE bot_messages SET text = $1, updated_at = NOW()
+                WHERE message_key = $2
+            """, text, message_key)
+
+async def get_all_message_keys():
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT message_key, text, photo_file_id FROM bot_messages ORDER BY id")
