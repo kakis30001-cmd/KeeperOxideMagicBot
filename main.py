@@ -164,7 +164,8 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     url = "https://pay.cryptobot.net/api/createInvoice"
     
     headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
     }
     
     payload = {
@@ -176,23 +177,24 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         "payload": f"{user_id}_{amount}"
     }
     
-    from aiohttp.resolver import ThreadedResolver
-    connector = aiohttp.TCPConnector(resolver=ThreadedResolver())
+    def make_request():
+        import requests
+        return requests.post(url, headers=headers, json=payload, timeout=10)
     
     try:
-        async with aiohttp.ClientSession(connector=connector) as session:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("ok"):
-                        return data["result"]["pay_url"]
-                    else:
-                        print(f"[CryptoBot] Ошибка API: {data}", flush=True)
-                else:
-                    print(f"[CryptoBot] Ошибка сервера: {resp.status}", flush=True)
-                    
+        resp = await asyncio.to_thread(make_request)
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("ok"):
+                return data["result"]["pay_url"]
+            else:
+                print(f"[CryptoBot] Ошибка API: {data}", flush=True)
+        else:
+            print(f"[CryptoBot] Ошибка сервера: {resp.status_code}", flush=True)
+                
     except Exception as e:
-        print(f"[CryptoBot] Ошибка сети: {e}", flush=True)
+        print(f"[CryptoBot] Ошибка сети (requests): {e}", flush=True)
         
     return None
     
