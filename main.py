@@ -163,9 +163,22 @@ async def create_vip_link(user_id: int, days: int = 30):
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
+import requests
+
 async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
-    ip_address = "104.26.10.154" 
-    path = "/api/createInvoice"
+    url = "https://pay.cryptobot.net/api/createInvoice"
+    
+    proxy_url = "socks5://92.119.166.175:1080"
+    
+    proxies = {
+        "http": proxy_url,
+        "https": proxy_url
+    }
+
+    headers = {
+        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+    }
     
     payload = {
         "amount": str(amount),
@@ -175,45 +188,29 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         "description": f"Пополнение баланса №{order_id}",
         "payload": f"{user_id}_{amount}"
     }
-    
-    headers = {
-        "Crypto-Pay-API-Token": CRYPTO_PAY_TOKEN,
-        "Content-Type": "application/json",
-        "Host": "pay.cryptobot.net", 
-        "User-Agent": "Mozilla/5.0"
-    }
 
-    def make_raw_request():
-        context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-        
-        conn = http.client.HTTPSConnection(ip_address, 443, context=context, timeout=10)
+    def make_proxy_request():
         try:
-            conn.request("POST", path, json.dumps(payload), headers)
-            response = conn.getresponse()
-            data = response.read().decode()
-            conn.close()
-            return data
+            response = requests.post(url, headers=headers, json=payload, proxies=proxies, timeout=10)
+            return response
         except Exception as e:
             return e
 
-    try:
-        response_data = await asyncio.to_thread(make_raw_request)
+    resp = await asyncio.to_thread(make_proxy_request)
+    
+    if isinstance(resp, Exception):
+        print(f"[CryptoBot] Ошибка прокси (Германия): {resp}", flush=True)
+        return None
         
-        if isinstance(response_data, Exception):
-            print(f"[CryptoBot] Ошибка соединения: {response_data}", flush=True)
-            return None
-            
-        data = json.loads(response_data)
+    if resp.status_code == 200:
+        data = resp.json()
         if data.get("ok"):
             return data["result"]["pay_url"]
         else:
             print(f"[CryptoBot] Ошибка API: {data}", flush=True)
-            
-    except Exception as e:
-        print(f"[CryptoBot] Ошибка выполнения: {e}", flush=True)
-        
+    else:
+        print(f"[CryptoBot] Ошибка сервера: {resp.status_code}", flush=True)
+    
     return None
     
 def get_main_keyboard():
