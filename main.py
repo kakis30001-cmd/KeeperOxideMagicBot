@@ -228,6 +228,20 @@ async def create_vip_link(user_id: int, days: int = 30):
     except:
         return None
 
+async def get_usdt_rate() -> float:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.binance.com/api/v3/ticker/price?symbol=USDTRUB") as resp:
+                data = await resp.json()
+                return float(data["price"])
+    except:
+        try:
+            async with session.get("https://min-api.cryptocompare.com/data/price?fsym=USDT&tsyms=RUB") as resp:
+                data = await resp.json()
+                return float(data["RUB"])
+        except:
+            return 68
+
 async def create_platega_payment(amount: int, order_id: str, user_id: int) -> str:
     return None
 
@@ -235,7 +249,11 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     if not CRYPTOBOT_TOKEN:
         return None
     
-    usdt_amount = convert_rub_to_usdt(amount, 100)
+    usdt_rate = await get_usdt_rate()
+    usdt_amount = round(amount / usdt_rate, 2)
+    
+    print(f"[CryptoBot] Курс USDT: {usdt_rate} RUB")
+    print(f"[CryptoBot] Сумма: {amount} RUB = {usdt_amount} USDT")
     
     result = create_crypto_invoice(usdt_amount, order_id, user_id)
     
