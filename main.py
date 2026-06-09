@@ -1436,6 +1436,10 @@ def platega_webhook():
     
     return jsonify({"status": "error"}), 400
 
+@flask_app.route("/webhook", methods=["POST"])
+def webhook_platega_redirect():
+    return platega_webhook()
+
 @flask_app.route("/webhook/crypto", methods=["POST"])
 def crypto_webhook():
     signature = request.headers.get("crypto-pay-api-signature")
