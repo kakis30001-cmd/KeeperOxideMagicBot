@@ -481,7 +481,6 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
     shop_mode = await get_setting("shop_mode")
     
     if shop_mode == "custom":
-        # РУЧНОЙ РЕЖИМ - запрашиваем сумму
         await state.set_state(ManualDepositStates.waiting_amount)
         await callback.message.edit_text(
             f"{emoji(EMOJI['dollar'], '💰')} <b>Ручное пополнение баланса</b>\n\n"
@@ -491,7 +490,6 @@ async def profile_deposit(callback: CallbackQuery, state: FSMContext):
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]])
         )
     else:
-        # АВТОМАТИЧЕСКИЙ РЕЖИМ
         await state.set_state(DepositStates.waiting_amount)
         await callback.message.edit_text(
             f"{emoji(EMOJI['dollar'], '💰')} <b>Укажите сумму пополнения баланса</b>\n\n"
