@@ -1507,7 +1507,6 @@ async def main():
     main_loop = asyncio.get_running_loop()
     
     await connect_db()
-    await bot.delete_webhook(drop_pending_updates=True)
     
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
