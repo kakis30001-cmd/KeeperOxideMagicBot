@@ -1478,13 +1478,13 @@ def crypto_webhook():
                 
     return jsonify({"status": "ok"}), 200
 
-@flask_app.route("/payment/success", methods=["GET"])
-def payment_success():
-    return "Оплата прошла успешно! Можете вернуться в бота.", 200
-
 @flask_app.route("/webhook", methods=["POST"])
 def webhook_platega_redirect():
     return platega_webhook()
+
+@flask_app.route("/payment/success", methods=["GET"])
+def payment_success():
+    return "Оплата прошла успешно! Можете вернуться в бота.", 200
 
 @flask_app.route("/payment/fail", methods=["GET"])
 def payment_fail():
@@ -1503,6 +1503,9 @@ async def main():
     main_loop = asyncio.get_running_loop()
     
     await connect_db()
+
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("✅ Webhook удален, использую polling режим")
     
     thread = Thread(target=run_flask, daemon=True)
     thread.start()
