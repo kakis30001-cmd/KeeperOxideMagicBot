@@ -555,8 +555,8 @@ async def process_manual_deposit_screenshot(message: Message, state: FSMContext)
     
     admin_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['check'], '✅')} Подтвердить", callback_data=f"confirm_deposit_{user_id}_{amount}"),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['key'], '❌')} Отклонить", callback_data=f"reject_deposit_{user_id}_{amount}")
+            InlineKeyboardButton(text=f"{emoji(EMOJI['check'], '✅')} Подтвердить", callback_data=f"admin_confirm_deposit_{user_id}_{amount}"),
+            InlineKeyboardButton(text=f"{emoji(EMOJI['key'], '❌')} Отклонить", callback_data=f"admin_reject_deposit_{user_id}_{amount}")
         ]
     ])
     
@@ -588,15 +588,15 @@ async def process_manual_deposit_screenshot(message: Message, state: FSMContext)
     
     await state.clear()
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("confirm_deposit_"))
+@dp.callback_query(lambda c: c.data and c.data.startswith("admin_confirm_deposit_"))
 async def admin_confirm_deposit(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer(f"{emoji(EMOJI['key'], '⛔')} Доступ запрещен", show_alert=True)
         return
     
     parts = callback.data.split("_")
-    user_id = int(parts[2])
-    amount = int(parts[3])
+    user_id = int(parts[3])
+    amount = int(parts[4])
     
     current_balance = await get_balance(user_id)
     await update_user_balance(user_id, current_balance + amount)
@@ -616,15 +616,15 @@ async def admin_confirm_deposit(callback: CallbackQuery):
         parse_mode="HTML"
     )
 
-@dp.callback_query(lambda c: c.data and c.data.startswith("reject_deposit_"))
+@dp.callback_query(lambda c: c.data and c.data.startswith("admin_reject_deposit_"))
 async def admin_reject_deposit(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer(f"{emoji(EMOJI['key'], '⛔')} Доступ запрещен", show_alert=True)
         return
     
     parts = callback.data.split("_")
-    user_id = int(parts[2])
-    amount = int(parts[3])
+    user_id = int(parts[3])
+    amount = int(parts[4])
     
     await callback.message.edit_caption(
         caption=f"{callback.message.caption}\n\n{emoji(EMOJI['key'], '❌')} <b>Статус: ОТКЛОНЕНО</b>",
@@ -837,6 +837,7 @@ async def handle_buy(callback: CallbackQuery):
     await mark_key_as_used(key_row["id"])
     await add_purchase(user_id, product_id, product["price"])
     
+    # Реферальный бонус - начисляется ТОЛЬКО после первой покупки
     if not await has_user_purchased(user_id):
         await mark_purchased(user_id)
         
