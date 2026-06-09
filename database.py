@@ -92,6 +92,17 @@ async def connect_db():
         """)
         
         await conn.execute("""
+        CREATE TABLE IF NOT EXISTS pending_orders(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT NOT NULL,
+            order_id TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+        
+        await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
         """)
         
@@ -282,3 +293,18 @@ async def get_pending_manual_orders():
             "JOIN products p ON mo.product_id = p.id "
             "WHERE mo.status = 'pending' ORDER BY mo.created_at DESC"
         )
+
+async def save_pending_order(user_id: int, order_id: str, amount: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO pending_orders (user_id, order_id, amount) VALUES ($1, $2, $3)",
+            user_id, order_id, amount
+        )
+
+async def get_pending_order(order_id: str):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT * FROM pending_orders WHERE order_id = $1 AND status = 'pending'", order_id)
+
+async def update_order_status(order_id: str, status: str):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE pending_orders SET status = $1 WHERE order_id = $2", status, order_id)
