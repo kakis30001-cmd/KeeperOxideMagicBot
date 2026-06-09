@@ -1482,6 +1482,10 @@ def crypto_webhook():
 def payment_success():
     return "Оплата прошла успешно! Можете вернуться в бота.", 200
 
+@flask_app.route("/webhook", methods=["POST"])
+def webhook_platega_redirect():
+    return platega_webhook()
+
 @flask_app.route("/payment/fail", methods=["GET"])
 def payment_fail():
     return "Оплата не прошла. Попробуйте снова.", 200
