@@ -534,7 +534,7 @@ async def process_manual_deposit_amount(message: Message, state: FSMContext):
 @dp.message(ManualDepositStates.waiting_screenshot)
 async def process_manual_deposit_screenshot(message: Message, state: FSMContext):
     if not message.photo:
-        await message.answer(f"{emoji(EMOJI['key'], '❌')} Пожалуйста, отправьте скриншот чека")
+        await message.answer(f"{emoji(EMOJI['key'], '❌')} Пожалуйста, отправьте скриншот чека", parse_mode="HTML")
         return
     
     data = await state.get_data()
@@ -555,8 +555,8 @@ async def process_manual_deposit_screenshot(message: Message, state: FSMContext)
     
     admin_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_deposit_{user_id}_{amount}"),
-            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_deposit_{user_id}_{amount}")
+            InlineKeyboardButton(text=f"{emoji(EMOJI['check'], '✅')} Подтвердить", callback_data=f"confirm_deposit_{user_id}_{amount}"),
+            InlineKeyboardButton(text=f"{emoji(EMOJI['key'], '❌')} Отклонить", callback_data=f"reject_deposit_{user_id}_{amount}")
         ]
     ])
     
@@ -606,7 +606,7 @@ async def admin_confirm_deposit(callback: CallbackQuery):
         parse_mode="HTML"
     )
     
-    await callback.answer(f"✅ Баланс пользователя {user_id} пополнен на {amount} ₽", show_alert=True)
+    await callback.answer(f"{emoji(EMOJI['check'], '✅')} Баланс пользователя {user_id} пополнен на {amount} ₽", show_alert=True)
     
     await bot.send_message(
         user_id,
@@ -631,7 +631,7 @@ async def admin_reject_deposit(callback: CallbackQuery):
         parse_mode="HTML"
     )
     
-    await callback.answer(f"❌ Запрос пользователя {user_id} отклонен", show_alert=True)
+    await callback.answer(f"{emoji(EMOJI['key'], '❌')} Запрос пользователя {user_id} отклонен", show_alert=True)
     
     await bot.send_message(
         user_id,
