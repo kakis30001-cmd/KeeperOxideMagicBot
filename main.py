@@ -868,13 +868,6 @@ async def process_activate_promocode(message: Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("buy_"))
 async def handle_buy(callback: CallbackQuery):
-    shop_mode = await get_setting("shop_mode")
-    if shop_mode == "custom":
-        custom_text = await get_setting("custom_text")
-        await callback.message.answer(custom_text, parse_mode="HTML")
-        await callback.answer()
-        return
-
     product_id = int(callback.data.split("_")[1])
     user_id = callback.from_user.id
     
