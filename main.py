@@ -555,8 +555,8 @@ async def process_manual_deposit_screenshot(message: Message, state: FSMContext)
     
     admin_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text=f"{emoji(EMOJI['check'], '✅')} Подтвердить", callback_data=f"admin_confirm_deposit_{user_id}_{amount}"),
-            InlineKeyboardButton(text=f"{emoji(EMOJI['key'], '❌')} Отклонить", callback_data=f"admin_reject_deposit_{user_id}_{amount}")
+            InlineKeyboardButton(text="Подтвердить", callback_data=f"admin_confirm_deposit_{user_id}_{amount}", icon_custom_emoji_id=EMOJI["check"]),
+            InlineKeyboardButton(text="Отклонить", callback_data=f"admin_reject_deposit_{user_id}_{amount}", icon_custom_emoji_id=EMOJI["key"])
         ]
     ])
     
