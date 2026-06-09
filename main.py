@@ -73,6 +73,7 @@ EMOJI = {
     "crown": "5807868868886009920",
     "new": "5886306834410640699",
     "edit": "5985774024968379294",
+    "camera": "5870856037455630084",  
 }
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
@@ -146,6 +147,13 @@ class AdminRefBonusStates(StatesGroup):
 
 class AdminCustomTextStates(StatesGroup):
     waiting_text = State()
+
+class ManualDepositStates(StatesGroup):
+    waiting_amount = State()
+    waiting_screenshot = State()
+
+class AdminManualOrderStates(StatesGroup):
+    waiting_confirm = State()
 
 async def get_usdt_rate() -> float:
     try:
@@ -364,6 +372,151 @@ async def menu_main(callback: CallbackQuery):
     text = f"{emoji(EMOJI['magic'], '✨')} <b>Главное меню</b>\n\nВыберите действие:"
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_main_keyboard())
     await callback.answer()
+
+@dp.callback_query(lambda c: c.data == "profile_manual_deposit")
+async def profile_manual_deposit(callback: CallbackQuery, state: FSMContext):
+    custom_text = await get_setting("custom_text")
+    await state.set_state(ManualDepositStates.waiting_amount)
+    await callback.message.edit_text(
+        f"{emoji(EMOJI['phone'], '💳')} <b>Ручное пополнение баланса</b>\n\n"
+        f"{custom_text}\n\n"
+        f"{emoji(EMOJI['dollar'], '💰')} Введите сумму пополнения (от 10 до 50000 ₽):",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
+        ])
+    )
+    await callback.answer()
+
+@dp.message(ManualDepositStates.waiting_amount)
+async def process_manual_deposit_amount(message: Message, state: FSMContext):
+    try:
+        amount = int(message.text.strip())
+        if amount < 10 or amount > 50000:
+            await message.answer(f"{emoji(EMOJI['key'], '❌')} Сумма должна быть от 10 до 50000 ₽", parse_mode="HTML")
+            return
+        
+        await state.update_data(amount=amount)
+        await state.set_state(ManualDepositStates.waiting_screenshot)
+        
+        custom_text = await get_setting("custom_text")
+        await message.answer(
+            f"{emoji(EMOJI['key'], '📸')} <b>Инструкция по оплате:</b>\n\n"
+            f"{custom_text}\n\n"
+            f"{emoji(EMOJI['important'], '⚠️')} <b>ВАЖНО:</b> В комментарии к переводу укажите ваш ID: <code>{message.from_user.id}</code>\n\n"
+            f"{emoji(EMOJI['camera'], '📷')} После оплаты отправьте <b>СКРИНШОТ</b> чека об оплате в этот чат:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
+            ])
+        )
+    except ValueError:
+        await message.answer(f"{emoji(EMOJI['key'], '❌')} Введите число", parse_mode="HTML")
+
+@dp.message(ManualDepositStates.waiting_screenshot, lambda m: m.photo)
+async def process_manual_deposit_screenshot(message: Message, state: FSMContext):
+    data = await state.get_data()
+    amount = data.get("amount")
+    user_id = message.from_user.id
+    username = message.from_user.username or message.from_user.first_name
+    
+    photo = message.photo[-1]
+    file_id = photo.file_id
+    
+    await state.update_data(screenshot_file_id=file_id)
+    
+    admin_text = (
+        f"{emoji(EMOJI['notification'], '🔔')} <b>НОВЫЙ ЗАПРОС НА ПОПОЛНЕНИЕ</b>\n\n"
+        f"{emoji(EMOJI['person'], '👤')} Пользователь: @{username}\n"
+        f"{emoji(EMOJI['verified'], '🆔')} ID: <code>{user_id}</code>\n"
+        f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n\n"
+        f"{emoji(EMOJI['clock'], '⏳')} Статус: Ожидает проверки"
+    )
+    
+    admin_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm_deposit_{user_id}_{amount}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"reject_deposit_{user_id}_{amount}")
+        ]
+    ])
+    
+    for admin_id in ADMIN_IDS:
+        try:
+            await bot.send_photo(
+                admin_id,
+                photo=file_id,
+                caption=admin_text,
+                parse_mode="HTML",
+                reply_markup=admin_kb
+            )
+        except Exception as e:
+            print(f"[ManualDeposit] Ошибка отправки админу {admin_id}: {e}")
+    
+    await message.answer(
+        f"{emoji(EMOJI['check'], '✅')} <b>Скриншот отправлен на проверку!</b>\n\n"
+        f"Сумма: <code>{amount} ₽</code>\n\n"
+        f"{emoji(EMOJI['clock'], '⏳')} Администратор проверит оплату в ближайшее время.\n"
+        f"После подтверждения баланс будет автоматически пополнен.",
+        parse_mode="HTML",
+        reply_markup=get_profile_keyboard()
+    )
+    
+    await state.clear()
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("confirm_deposit_"))
+async def admin_confirm_deposit(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔️ Доступ запрещен", show_alert=True)
+        return
+    
+    parts = callback.data.split("_")
+    user_id = int(parts[2])
+    amount = int(parts[3])
+    
+    current_balance = await get_balance(user_id)
+    await update_user_balance(user_id, current_balance + amount)
+    
+    await callback.message.edit_caption(
+        caption=f"{callback.message.caption}\n\n{emoji(EMOJI['check'], '✅')} <b>Статус: ПОДТВЕРЖДЕНО</b>\nАдминистратор: @{callback.from_user.username or callback.from_user.first_name}",
+        parse_mode="HTML"
+    )
+    
+    await callback.answer(f"✅ Баланс пользователя {user_id} пополнен на {amount} ₽", show_alert=True)
+    
+    await bot.send_message(
+        user_id,
+        f"{emoji(EMOJI['check'], '✅')} <b>Ваше пополнение подтверждено!</b>\n\n"
+        f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n"
+        f"{emoji(EMOJI['almaz'], '📊')} Новый баланс: <code>{current_balance + amount} ₽</code>",
+        parse_mode="HTML"
+    )
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("reject_deposit_"))
+async def admin_reject_deposit(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⛔️ Доступ запрещен", show_alert=True)
+        return
+    
+    parts = callback.data.split("_")
+    user_id = int(parts[2])
+    amount = int(parts[3])
+    
+    await callback.message.edit_caption(
+        caption=f"{callback.message.caption}\n\n{emoji(EMOJI['key'], '❌')} <b>Статус: ОТКЛОНЕНО</b>\nАдминистратор: @{callback.from_user.username or callback.from_user.first_name}",
+        parse_mode="HTML"
+    )
+    
+    await callback.answer(f"❌ Запрос пользователя {user_id} отклонен", show_alert=True)
+    
+    # Уведомляем пользователя
+    await bot.send_message(
+        user_id,
+        f"{emoji(EMOJI['key'], '❌')} <b>Ваше пополнение отклонено!</b>\n\n"
+        f"{emoji(EMOJI['dollar'], '💰')} Сумма: <code>{amount} ₽</code>\n\n"
+        f"Причина: скриншот не соответствует требованиям.\n"
+        f"Пожалуйста, попробуйте снова.",
+        parse_mode="HTML"
+    )
 
 @dp.callback_query(lambda c: c.data == "menu_info")
 async def menu_info(callback: CallbackQuery):
