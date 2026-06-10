@@ -20,6 +20,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 import aiohttp
 import requests  
+import re
 
 from config import BOT_TOKEN, ADMIN_IDS, RAILWAY_URL, CHANNEL_ID, CRYPTOBOT_TOKEN, PLATEGA_MERCHANT_ID, PLATEGA_API_SECRET
 from database import (
@@ -263,22 +264,26 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
             print(f"[Platega] Ошибка: {e}")
             return None
 
-async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str:
+async def create_crypto_payment(amount_without_fee: int, order_id: str, user_id: int) -> str:
     if not CRYPTOBOT_TOKEN:
         print("[CryptoBot] Нет токена")
         return None
     
     crypto_fee = await get_crypto_fee()
-    amount_without_fee = amount - (amount * crypto_fee // 100)
+    # Сумма к оплате = желаемая сумма / (1 - комиссия/100)
+    if crypto_fee > 0:
+        amount_to_pay = int(amount_without_fee * 100 / (100 - crypto_fee))
+    else:
+        amount_to_pay = amount_without_fee
     
     usdt_rate = await get_usdt_rate()
-    usdt_amount = round(amount / usdt_rate, 2)
+    usdt_amount = round(amount_to_pay / usdt_rate, 2)
     
     print(f"[CryptoBot] ==================================")
     print(f"[CryptoBot] КУРС: 1 USDT = {usdt_rate} RUB")
-    print(f"[CryptoBot] Сумма оплаты: {amount} RUB")
+    print(f"[CryptoBot] Желаемая сумма на баланс: {amount_without_fee} RUB")
     print(f"[CryptoBot] Комиссия: {crypto_fee}%")
-    print(f"[CryptoBot] Пользователь получит: {amount_without_fee} RUB")
+    print(f"[CryptoBot] Сумма к оплате: {amount_to_pay} RUB")
     print(f"[CryptoBot] Сумма в USDT: {usdt_amount}")
     print(f"[CryptoBot] ==================================")
     
@@ -287,11 +292,9 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     if result.get("success"):
         pending_payments[user_id] = {
             "amount": amount_without_fee,
-            "amount_with_fee": amount,
             "order_id": order_id,
             "invoice_id": result["invoice_id"],
-            "status": "pending",
-            "crypto_fee": crypto_fee
+            "status": "pending"
         }
         return result["payment_url"]
     else:
@@ -558,11 +561,6 @@ async def process_manual_deposit_screenshot(message: Message, state: FSMContext)
     username = message.from_user.username or message.from_user.first_name
     payment_id = f"{user_id}_{amount}_{int(datetime.now().timestamp())}"
     
-    if payment_id in processed_payments:
-        return
-    
-    processed_payments.add(payment_id)
-    
     photo = message.photo[-1]
     file_id = photo.file_id
     
@@ -617,27 +615,21 @@ async def admin_confirm_deposit(callback: CallbackQuery):
     
     payment_id = callback.data.replace("admin_confirm_deposit_", "")
     
-    if payment_id in processed_payments and processed_payments != set():
+    if payment_id in processed_payments:
         await callback.answer("Этот запрос уже обработан другим администратором", show_alert=True)
         return
     
     try:
-        parts = callback.message.caption.split("\n")
-        user_id_line = None
-        amount_line = None
-        for line in parts:
-            if "ID:" in line:
-                user_id_line = line
-            if "Сумма:" in line:
-                amount_line = line
+        caption = callback.message.caption
+        user_id_match = re.search(r'ID: <code>(\d+)</code>', caption)
+        amount_match = re.search(r'Сумма: <code>(\d+)</code>', caption)
         
-        if not user_id_line or not amount_line:
+        if not user_id_match or not amount_match:
             await callback.answer("Ошибка: не удалось получить данные", show_alert=True)
             return
         
-        import re
-        user_id = int(re.search(r'<code>(\d+)</code>', user_id_line).group(1))
-        amount = int(re.search(r'<code>(\d+)</code>', amount_line).group(1))
+        user_id = int(user_id_match.group(1))
+        amount = int(amount_match.group(1))
         
         current_balance = await get_balance(user_id)
         await update_user_balance(user_id, current_balance + amount)
@@ -671,27 +663,21 @@ async def admin_reject_deposit(callback: CallbackQuery):
     
     payment_id = callback.data.replace("admin_reject_deposit_", "")
     
-    if payment_id in processed_payments and processed_payments != set():
+    if payment_id in processed_payments:
         await callback.answer("Этот запрос уже обработан другим администратором", show_alert=True)
         return
     
     try:
-        parts = callback.message.caption.split("\n")
-        user_id_line = None
-        amount_line = None
-        for line in parts:
-            if "ID:" in line:
-                user_id_line = line
-            if "Сумма:" in line:
-                amount_line = line
+        caption = callback.message.caption
+        user_id_match = re.search(r'ID: <code>(\d+)</code>', caption)
+        amount_match = re.search(r'Сумма: <code>(\d+)</code>', caption)
         
-        if not user_id_line or not amount_line:
+        if not user_id_match or not amount_match:
             await callback.answer("Ошибка: не удалось получить данные", show_alert=True)
             return
         
-        import re
-        user_id = int(re.search(r'<code>(\d+)</code>', user_id_line).group(1))
-        amount = int(re.search(r'<code>(\d+)</code>', amount_line).group(1))
+        user_id = int(user_id_match.group(1))
+        amount = int(amount_match.group(1))
         
         processed_payments.add(payment_id)
         
@@ -733,6 +719,12 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.set_state(DepositStates.waiting_method)
         
+        crypto_fee = await get_crypto_fee()
+        fee_text = ""
+        if crypto_fee > 0:
+            amount_to_pay = int(amount * 100 / (100 - crypto_fee))
+            fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nК оплате: <code>{amount_to_pay} ₽</code>\nНа баланс поступит: <code>{amount} ₽</code>"
+        
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
                 InlineKeyboardButton(text="СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
@@ -740,12 +732,6 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             ],
             [InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
         ])
-        
-        crypto_fee = await get_crypto_fee()
-        fee_text = ""
-        if crypto_fee > 0:
-            amount_without_fee = amount - (amount * crypto_fee // 100)
-            fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nНа баланс поступит: <code>{amount_without_fee} ₽</code>"
         
         await message.answer(
             f"{emoji(EMOJI['magic'], '✨')} <b>Сумма пополнения: {amount} ₽</b>{fee_text}\n\nВыберите предпочтительный метод оплаты:",
@@ -1031,7 +1017,7 @@ async def admin_crypto_fee(callback: CallbackQuery, state: FSMContext):
         f"{emoji(EMOJI['crypto'], '🪙')} <b>Настройка комиссии для крипто-пополнений</b>\n\n"
         f"Текущая комиссия: <code>{current_fee}%</code>\n\n"
         f"Введите размер комиссии (число от 0 до 50):\n\n"
-        f"Пример: <code>10</code> - будет браться 10% комиссии\n"
+        f"Пример: <code>10</code> - пользователь хочет получить 100₽, платит ~111₽\n"
         f"Пример: <code>0</code> - без комиссии",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -1057,7 +1043,7 @@ async def process_crypto_fee(message: Message, state: FSMContext):
         await message.answer(
             f"{emoji(EMOJI['check'], '✅')} <b>Комиссия успешно установлена!</b>\n\n"
             f"{emoji(EMOJI['crypto'], '🪙')} Размер комиссии: <code>{fee}%</code>\n\n"
-            f"При пополнении на 100 ₽ пользователь получит <code>{100 - fee} ₽</code> на баланс",
+            f"Если пользователь хочет получить на баланс 100 ₽, он заплатит <code>{int(100 * 100 / (100 - fee))} ₽</code>",
             parse_mode="HTML",
             reply_markup=get_admin_keyboard(shop_mode)
         )
@@ -1066,6 +1052,7 @@ async def process_crypto_fee(message: Message, state: FSMContext):
     except ValueError:
         await message.answer(f"{emoji(EMOJI['key'], '❌')} Введите число", parse_mode="HTML")
 
+# Пропущенные админ-функции (добавьте их из вашего оригинального файла)
 @dp.callback_query(lambda c: c.data == "admin_add_product")
 async def admin_add_product(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
