@@ -264,24 +264,24 @@ async def create_platega_payment(amount: int, order_id: str, user_id: int) -> st
             print(f"[Platega] Ошибка: {e}")
             return None
 
-async def create_crypto_payment(amount_without_fee: int, order_id: str, user_id: int) -> str:
+async def create_crypto_payment(desired_amount: int, order_id: str, user_id: int) -> str:
     if not CRYPTOBOT_TOKEN:
         print("[CryptoBot] Нет токена")
         return None
     
     crypto_fee = await get_crypto_fee()
-    # Сумма к оплате = желаемая сумма / (1 - комиссия/100)
+    
     if crypto_fee > 0:
-        amount_to_pay = int(amount_without_fee * 100 / (100 - crypto_fee))
+        amount_to_pay = int(desired_amount * 100 / (100 - crypto_fee))
     else:
-        amount_to_pay = amount_without_fee
+        amount_to_pay = desired_amount
     
     usdt_rate = await get_usdt_rate()
     usdt_amount = round(amount_to_pay / usdt_rate, 2)
     
     print(f"[CryptoBot] ==================================")
     print(f"[CryptoBot] КУРС: 1 USDT = {usdt_rate} RUB")
-    print(f"[CryptoBot] Желаемая сумма на баланс: {amount_without_fee} RUB")
+    print(f"[CryptoBot] Желаемая сумма на баланс: {desired_amount} RUB")
     print(f"[CryptoBot] Комиссия: {crypto_fee}%")
     print(f"[CryptoBot] Сумма к оплате: {amount_to_pay} RUB")
     print(f"[CryptoBot] Сумма в USDT: {usdt_amount}")
@@ -291,11 +291,12 @@ async def create_crypto_payment(amount_without_fee: int, order_id: str, user_id:
     
     if result.get("success"):
         pending_payments[user_id] = {
-            "amount": amount_without_fee,
+            "amount": desired_amount,  
             "order_id": order_id,
             "invoice_id": result["invoice_id"],
             "status": "pending"
         }
+        pending_payments[user_id]["amount_to_pay"] = amount_to_pay
         return result["payment_url"]
     else:
         print(f"[CryptoBot] Ошибка: {result.get('error')}")
@@ -721,7 +722,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
         crypto_fee = await get_crypto_fee()
         fee_text = ""
-        if crypto_fee > 0:
+     if crypto_fee > 0:
             amount_to_pay = int(amount * 100 / (100 - crypto_fee))
             fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nК оплате: <code>{amount_to_pay} ₽</code>\nНа баланс поступит: <code>{amount} ₽</code>"
         
@@ -772,18 +773,24 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
             "status": "pending"
         }
     else:
-        await callback.message.edit_text(
-            f"{emoji(EMOJI['clock'], '⏳')} <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
-        )
-        payment_url = await create_crypto_payment(amount, order_id, user_id)
-        method_name = "Crypto Pay (Криптовалюта)"
+    await callback.message.edit_text(
+        f"{emoji(EMOJI['clock'], '⏳')} <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
+    )
+    crypto_fee = await get_crypto_fee()
+    amount_to_pay = int(amount * 100 / (100 - crypto_fee)) if crypto_fee > 0 else amount
+    payment_url = await create_crypto_payment(amount, order_id, user_id)
+    method_name = "Crypto Pay (Криптовалюта)"
     
-    if not payment_url:
+    if payment_url:
         await callback.message.edit_text(
-            f"{emoji(EMOJI['cat_surprised'], '😲')} <b>Платежная система временно недоступна</b>\n\n"
-            f"Свяжитесь с администратором для ручного пополнения баланса.\n\n"
-            f"{emoji(EMOJI['person'], '👤')} Админ: @nikita1055",
+            f"{emoji(EMOJI['wallet'], '💳')} <b>Оплата через {method_name}</b>\n\n"
+            f"Сумма к оплате: <code>{amount_to_pay} ₽</code>\n"
+            f"На баланс поступит: <code>{amount} ₽</code>\n\n"
+            f"{emoji(EMOJI['key'], '🔗')} <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
+            f"{emoji(EMOJI['verified'], '🆔')} Номер заказа: <code>{order_id}</code>\n\n"
+            f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически после оплаты!",
             parse_mode="HTML",
+            disable_web_page_preview=True,
             reply_markup=get_profile_keyboard()
         )
         return
