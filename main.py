@@ -30,7 +30,8 @@ from database import (
     get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_paid_referrals_count,
     get_referral_config, update_referral_config, add_balance, get_product_by_id,
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
-    get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders
+    get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders,
+    get_crypto_fee, set_crypto_fee
 )
 
 EMOJI = {
@@ -154,6 +155,9 @@ class ManualDepositStates(StatesGroup):
     waiting_amount = State()
     waiting_screenshot = State()
 
+class AdminCryptoFeeStates(StatesGroup):
+    waiting_fee = State()
+
 async def get_usdt_rate() -> float:
     try:
         async with aiohttp.ClientSession() as session:
@@ -264,12 +268,17 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
         print("[CryptoBot] Нет токена")
         return None
     
+    crypto_fee = await get_crypto_fee()
+    amount_without_fee = amount - (amount * crypto_fee // 100)
+    
     usdt_rate = await get_usdt_rate()
     usdt_amount = round(amount / usdt_rate, 2)
     
     print(f"[CryptoBot] ==================================")
     print(f"[CryptoBot] КУРС: 1 USDT = {usdt_rate} RUB")
-    print(f"[CryptoBot] Сумма в RUB: {amount}")
+    print(f"[CryptoBot] Сумма оплаты: {amount} RUB")
+    print(f"[CryptoBot] Комиссия: {crypto_fee}%")
+    print(f"[CryptoBot] Пользователь получит: {amount_without_fee} RUB")
     print(f"[CryptoBot] Сумма в USDT: {usdt_amount}")
     print(f"[CryptoBot] ==================================")
     
@@ -277,10 +286,12 @@ async def create_crypto_payment(amount: int, order_id: str, user_id: int) -> str
     
     if result.get("success"):
         pending_payments[user_id] = {
-            "amount": amount,
+            "amount": amount_without_fee,
+            "amount_with_fee": amount,
             "order_id": order_id,
             "invoice_id": result["invoice_id"],
-            "status": "pending"
+            "status": "pending",
+            "crypto_fee": crypto_fee
         }
         return result["payment_url"]
     else:
@@ -330,6 +341,7 @@ def get_admin_keyboard(shop_mode="auto"):
         ],
         [
             InlineKeyboardButton(text="Настройка рефералов", callback_data="admin_ref_config", icon_custom_emoji_id=EMOJI["repeat"]),
+            InlineKeyboardButton(text="Комиссия крипты", callback_data="admin_crypto_fee", icon_custom_emoji_id=EMOJI["crypto"])
         ],
         [
             InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_mode"),
@@ -723,14 +735,20 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
-                InlineKeyboardButton(text="💳 СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
-                InlineKeyboardButton(text="🪙 Криптовалюта (CryptoPay)", callback_data="pay_method_crypto", icon_custom_emoji_id=EMOJI["crypto"])
+                InlineKeyboardButton(text="СБП (Platega)", callback_data="pay_method_platega", icon_custom_emoji_id=EMOJI["sbp"]),
+                InlineKeyboardButton(text="Криптовалюта (CryptoPay)", callback_data="pay_method_crypto", icon_custom_emoji_id=EMOJI["crypto"])
             ],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
+            [InlineKeyboardButton(text="Отмена", callback_data="menu_profile", icon_custom_emoji_id=EMOJI["arrow_back"])]
         ])
         
+        crypto_fee = await get_crypto_fee()
+        fee_text = ""
+        if crypto_fee > 0:
+            amount_without_fee = amount - (amount * crypto_fee // 100)
+            fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nНа баланс поступит: <code>{amount_without_fee} ₽</code>"
+        
         await message.answer(
-            f"{emoji(EMOJI['magic'], '✨')} <b>Сумма пополнения: {amount} ₽</b>\n\nВыберите предпочтительный метод оплаты:",
+            f"{emoji(EMOJI['magic'], '✨')} <b>Сумма пополнения: {amount} ₽</b>{fee_text}\n\nВыберите предпочтительный метод оплаты:",
             parse_mode="HTML",
             reply_markup=kb
         )
@@ -754,12 +772,6 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     order_id = str(uuid.uuid4())[:8]
     user_id = callback.from_user.id
     
-    pending_payments[user_id] = {
-        "amount": amount,
-        "order_id": order_id,
-        "status": "pending"
-    }
-    
     await callback.answer("Генерируем счёт...")
     
     if callback.data == "pay_method_platega":
@@ -768,6 +780,11 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         )
         payment_url = await create_platega_payment(amount, order_id, user_id)
         method_name = "Platega (СБП)"
+        pending_payments[user_id] = {
+            "amount": amount,
+            "order_id": order_id,
+            "status": "pending"
+        }
     else:
         await callback.message.edit_text(
             f"{emoji(EMOJI['clock'], '⏳')} <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
@@ -1001,6 +1018,53 @@ async def process_custom_text_save(message: Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
+
+@dp.callback_query(lambda c: c.data == "admin_crypto_fee")
+async def admin_crypto_fee(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer(f"{emoji(EMOJI['key'], '⛔')} Доступ запрещен")
+        return
+    
+    current_fee = await get_crypto_fee()
+    await state.set_state(AdminCryptoFeeStates.waiting_fee)
+    await callback.message.answer(
+        f"{emoji(EMOJI['crypto'], '🪙')} <b>Настройка комиссии для крипто-пополнений</b>\n\n"
+        f"Текущая комиссия: <code>{current_fee}%</code>\n\n"
+        f"Введите размер комиссии (число от 0 до 50):\n\n"
+        f"Пример: <code>10</code> - будет браться 10% комиссии\n"
+        f"Пример: <code>0</code> - без комиссии",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
+        ])
+    )
+    await callback.answer()
+
+@dp.message(AdminCryptoFeeStates.waiting_fee)
+async def process_crypto_fee(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        fee = int(message.text.strip())
+        if fee < 0 or fee > 50:
+            await message.answer(f"{emoji(EMOJI['key'], '❌')} Комиссия должна быть от 0 до 50%", parse_mode="HTML")
+            return
+        
+        await set_crypto_fee(fee)
+        
+        shop_mode = await get_setting("shop_mode")
+        await message.answer(
+            f"{emoji(EMOJI['check'], '✅')} <b>Комиссия успешно установлена!</b>\n\n"
+            f"{emoji(EMOJI['crypto'], '🪙')} Размер комиссии: <code>{fee}%</code>\n\n"
+            f"При пополнении на 100 ₽ пользователь получит <code>{100 - fee} ₽</code> на баланс",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(shop_mode)
+        )
+        await state.clear()
+        
+    except ValueError:
+        await message.answer(f"{emoji(EMOJI['key'], '❌')} Введите число", parse_mode="HTML")
 
 @dp.callback_query(lambda c: c.data == "admin_add_product")
 async def admin_add_product(callback: CallbackQuery, state: FSMContext):
@@ -1714,7 +1778,7 @@ async def main():
     main_loop = asyncio.get_running_loop()
     
     await connect_db()
-
+    
     await bot.delete_webhook(drop_pending_updates=True)
     print("✅ Webhook удален, использую polling режим")
     
