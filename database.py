@@ -123,6 +123,20 @@ async def get_setting(key: str) -> str:
     async with pool.acquire() as conn:
         return await conn.fetchval("SELECT value FROM bot_settings WHERE key = $1", key)
 
+async def get_crypto_fee() -> int:
+    async with pool.acquire() as conn:
+        row = await conn.fetchval("SELECT value FROM bot_settings WHERE key = 'crypto_fee'")
+        if row:
+            return int(row)
+        return 0
+
+async def set_crypto_fee(fee: int):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO bot_settings (key, value) VALUES ('crypto_fee', $1)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, str(fee))
+
 async def update_setting(key: str, value: str):
     async with pool.acquire() as conn:
         await conn.execute("""
