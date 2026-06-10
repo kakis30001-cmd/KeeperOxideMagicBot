@@ -291,12 +291,11 @@ async def create_crypto_payment(desired_amount: int, order_id: str, user_id: int
     
     if result.get("success"):
         pending_payments[user_id] = {
-            "amount": desired_amount,  
+            "amount": desired_amount,
             "order_id": order_id,
             "invoice_id": result["invoice_id"],
             "status": "pending"
         }
-        pending_payments[user_id]["amount_to_pay"] = amount_to_pay
         return result["payment_url"]
     else:
         print(f"[CryptoBot] Ошибка: {result.get('error')}")
@@ -722,7 +721,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         
         crypto_fee = await get_crypto_fee()
         fee_text = ""
-     if crypto_fee > 0:
+        if crypto_fee > 0:
             amount_to_pay = int(amount * 100 / (100 - crypto_fee))
             fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nК оплате: <code>{amount_to_pay} ₽</code>\nНа баланс поступит: <code>{amount} ₽</code>"
         
@@ -772,39 +771,48 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
             "order_id": order_id,
             "status": "pending"
         }
+        if payment_url:
+            await callback.message.edit_text(
+                f"{emoji(EMOJI['wallet'], '💳')} <b>Оплата через {method_name}</b>\n\n"
+                f"Сумма к оплате: <code>{amount} ₽</code>\n\n"
+                f"{emoji(EMOJI['key'], '🔗')} <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
+                f"{emoji(EMOJI['verified'], '🆔')} Номер заказа: <code>{order_id}</code>\n\n"
+                f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически после оплаты!",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=get_profile_keyboard()
+            )
     else:
-    await callback.message.edit_text(
-        f"{emoji(EMOJI['clock'], '⏳')} <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
-    )
-    crypto_fee = await get_crypto_fee()
-    amount_to_pay = int(amount * 100 / (100 - crypto_fee)) if crypto_fee > 0 else amount
-    payment_url = await create_crypto_payment(amount, order_id, user_id)
-    method_name = "Crypto Pay (Криптовалюта)"
-    
-    if payment_url:
         await callback.message.edit_text(
-            f"{emoji(EMOJI['wallet'], '💳')} <b>Оплата через {method_name}</b>\n\n"
-            f"Сумма к оплате: <code>{amount_to_pay} ₽</code>\n"
-            f"На баланс поступит: <code>{amount} ₽</code>\n\n"
-            f"{emoji(EMOJI['key'], '🔗')} <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
-            f"{emoji(EMOJI['verified'], '🆔')} Номер заказа: <code>{order_id}</code>\n\n"
-            f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически после оплаты!",
+            f"{emoji(EMOJI['clock'], '⏳')} <b>Связываемся со шлюзом CryptoBot API...</b>\nПожалуйста, подождите пару секунд.", parse_mode="HTML"
+        )
+        crypto_fee = await get_crypto_fee()
+        amount_to_pay = int(amount * 100 / (100 - crypto_fee)) if crypto_fee > 0 else amount
+        payment_url = await create_crypto_payment(amount, order_id, user_id)
+        method_name = "Crypto Pay (Криптовалюта)"
+        
+        if payment_url:
+            await callback.message.edit_text(
+                f"{emoji(EMOJI['wallet'], '💳')} <b>Оплата через {method_name}</b>\n\n"
+                f"Сумма к оплате: <code>{amount_to_pay} ₽</code>\n"
+                f"На баланс поступит: <code>{amount} ₽</code>\n\n"
+                f"{emoji(EMOJI['key'], '🔗')} <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
+                f"{emoji(EMOJI['verified'], '🆔')} Номер заказа: <code>{order_id}</code>\n\n"
+                f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически после оплаты!",
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+                reply_markup=get_profile_keyboard()
+            )
+    
+    if not payment_url:
+        await callback.message.edit_text(
+            f"{emoji(EMOJI['cat_surprised'], '😲')} <b>Платежная система временно недоступна</b>\n\n"
+            f"Свяжитесь с администратором для ручного пополнения баланса.\n\n"
+            f"{emoji(EMOJI['person'], '👤')} Админ: @nikita1055",
             parse_mode="HTML",
-            disable_web_page_preview=True,
             reply_markup=get_profile_keyboard()
         )
         return
-    
-    await callback.message.edit_text(
-        f"{emoji(EMOJI['wallet'], '💳')} <b>Оплата через {method_name}</b>\n\n"
-        f"Сумма к оплате: <code>{amount} ₽</code>\n\n"
-        f"{emoji(EMOJI['key'], '🔗')} <a href='{payment_url}'>НАЖМИТЕ ТУТ ЧТОБЫ ОПЛАТИТЬ</a>\n\n"
-        f"{emoji(EMOJI['verified'], '🆔')} Номер заказа: <code>{order_id}</code>\n\n"
-        f"{emoji(EMOJI['magic'], '⚡')} Баланс обновится автоматически после оплаты!",
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=get_profile_keyboard()
-    )
 
 @dp.callback_query(lambda c: c.data == "profile_activate_promocode")
 async def profile_activate_promocode(callback: CallbackQuery, state: FSMContext):
@@ -1059,7 +1067,6 @@ async def process_crypto_fee(message: Message, state: FSMContext):
     except ValueError:
         await message.answer(f"{emoji(EMOJI['key'], '❌')} Введите число", parse_mode="HTML")
 
-# Пропущенные админ-функции (добавьте их из вашего оригинального файла)
 @dp.callback_query(lambda c: c.data == "admin_add_product")
 async def admin_add_product(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
