@@ -31,8 +31,8 @@ from database import (
     get_all_promocodes, delete_promocode, get_referrer, get_referrals_count, get_paid_referrals_count,
     get_referral_config, update_referral_config, add_balance, get_product_by_id,
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
-    get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders,
-    get_crypto_fee, set_crypto_fee, update_order_status, get_pending_order, pool
+    get_setting, update_setting, get_crypto_fee, set_crypto_fee,
+    update_order_status, get_pending_order, save_pending_order, pool
 )
 
 EMOJI = {
