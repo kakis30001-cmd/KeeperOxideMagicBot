@@ -565,10 +565,8 @@ async def process_manual_deposit_screenshot(message: Message, state: FSMContext)
     user_id = message.from_user.id
     username = message.from_user.username or message.from_user.first_name
     
-    # Короткий ID (8 символов) чтобы точно влез в callback_data
     order_id = str(uuid.uuid4())[:8]
     
-    # ИСПРАВЛЕНО: Используем готовую функцию save_pending_order вместо прямого запроса
     try:
         from database import save_pending_order
         await save_pending_order(user_id, order_id, amount)
