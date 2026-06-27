@@ -11,10 +11,13 @@ async def get_ai_response(user_id: int, user_message: str) -> str:
     if ai_enabled != "true":
         return "❌ ИИ-помощник отключен администратором."
     
-    system_prompt = await get_ai_setting("system_prompt")
-    model = await get_ai_setting("ai_model") or OPENROUTER_MODEL
+    # Берем модель СНАЧАЛА из переменной окружения, потом из БД
+    model = OPENROUTER_MODEL  # из config.py (переменная Railway)
+    if not model:
+        model = await get_ai_setting("ai_model") or "qwen/qwen3-next-80b-a3b-instruct:free"
     
-    # Получаем историю чата
+    system_prompt = await get_ai_setting("system_prompt")
+    
     history = await get_ai_chat_history(user_id, 5)
     messages = [{"role": "system", "content": system_prompt}]
     
@@ -24,6 +27,8 @@ async def get_ai_response(user_id: int, user_message: str) -> str:
     messages.append({"role": "user", "content": user_message})
     
     await save_ai_chat_history(user_id, "user", user_message)
+    
+    print(f"[AI] Используется модель: {model}")
     
     try:
         async with aiohttp.ClientSession() as session:
@@ -40,8 +45,6 @@ async def get_ai_response(user_id: int, user_message: str) -> str:
                 "temperature": 0.7,
                 "max_tokens": 500
             }
-            
-            print(f"[AI] Используется модель: {model}")
             
             async with session.post(
                 "https://openrouter.ai/api/v1/chat/completions",
