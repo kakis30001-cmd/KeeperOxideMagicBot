@@ -84,31 +84,21 @@ EMOJI = {
 }
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
-    return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+    """Функция для вставки премиум эмодзи с fallback"""
+    try:
+        return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+    except:
+        return fallback
 
-# ===================== DNS ПАТЧ =====================
-_orig_getaddrinfo = socket.getaddrinfo
-
-def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
-    if host == "pay.cryptobot.net":
+def get_emoji(key: str, fallback: str = "") -> str:
+    """Получить эмодзи по ключу с fallback"""
+    sticker_id = EMOJI.get(key)
+    if sticker_id:
         try:
-            req = urllib.request.Request(
-                "https://1.1.1.1/dns-query?name=pay.cryptobot.net",
-                headers={"Accept": "application/dns-json"}
-            )
-            with urllib.request.urlopen(req, timeout=3) as response:
-                dns_data = json.loads(response.read().decode())
-                if "Answer" in dns_data:
-                    ips = [item["data"] for item in dns_data["Answer"] if item["type"] == 1]
-                    if ips:
-                        return _orig_getaddrinfo(ips[0], port, family, type, proto, flags)
-        except Exception as e:
-            print(f"[DNS Патч] Ошибка: {e}", flush=True)
-            return _orig_getaddrinfo("172.67.73.187", port, family, type, proto, flags)
-            
-    return _orig_getaddrinfo(host, port, family, type, proto, flags)
-
-socket.getaddrinfo = _patched_getaddrinfo
+            return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+        except:
+            return fallback
+    return fallback
 
 # ===================== ИНИЦИАЛИЗАЦИЯ =====================
 bot = Bot(token=BOT_TOKEN)
