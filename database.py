@@ -21,7 +21,8 @@ async def connect_db():
         CREATE TABLE IF NOT EXISTS products(
             id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
-            price INTEGER NOT NULL
+            price INTEGER NOT NULL,
+            photo_id TEXT DEFAULT NULL
         )
         """)
 
@@ -103,6 +104,24 @@ async def connect_db():
         """)
         
         await conn.execute("""
+        CREATE TABLE IF NOT EXISTS ai_chat_history(
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """)
+        
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS ai_settings(
+            id SERIAL PRIMARY KEY,
+            key TEXT UNIQUE NOT NULL,
+            value TEXT NOT NULL
+        )
+        """)
+        
+        await conn.execute("""
         INSERT INTO referral_config (bonus_type, bonus_value) VALUES ('rubles', 0) ON CONFLICT DO NOTHING
         """)
         
@@ -114,21 +133,33 @@ async def connect_db():
         INSERT INTO bot_settings (key, value) VALUES ('custom_text', '⏳ Автоматические продажи временно отключены. Пожалуйста, напишите администратору @nikita1055 для ручной покупки ключа.') ON CONFLICT (key) DO NOTHING
         """)
         
-        try:
-            await conn.execute("ALTER TABLE users ADD COLUMN has_purchased BOOLEAN DEFAULT FALSE")
-        except:
-            pass
+        await conn.execute("""
+        INSERT INTO bot_settings (key, value) VALUES ('crypto_fee', '0') ON CONFLICT (key) DO NOTHING
+        """)
+        
+        await conn.execute("""
+        INSERT INTO ai_settings (key, value) VALUES 
+        ('system_prompt', 'Ты - дружелюбный ИИ-ассистент магазина KeeperShop. Ты помогаешь пользователям с выбором товаров, отвечаешь на вопросы о магазине, даешь советы. Твой стиль общения - вежливый, но не навязчивый. Ты можешь использовать эмодзи. Не давай ложной информации о товарах, если не уверен - скажи что нужно обратиться к администратору.')
+        ON CONFLICT (key) DO NOTHING
+        """)
+        
+        await conn.execute("""
+        INSERT INTO ai_settings (key, value) VALUES ('ai_enabled', 'true') ON CONFLICT (key) DO NOTHING
+        """)
+        
+        await conn.execute("""
+        INSERT INTO ai_settings (key, value) VALUES ('ai_model', 'mistralai/mistral-7b-instruct:free') ON CONFLICT (key) DO NOTHING
+        """)
 
 async def get_setting(key: str) -> str:
     async with pool.acquire() as conn:
-        return await conn.fetchval("SELECT value FROM bot_settings WHERE key = $1", key)
+        row = await conn.fetchval("SELECT value FROM bot_settings WHERE key = $1", key)
+        return row or "auto"
 
 async def get_crypto_fee() -> int:
     async with pool.acquire() as conn:
         row = await conn.fetchval("SELECT value FROM bot_settings WHERE key = 'crypto_fee'")
-        if row:
-            return int(row)
-        return 0
+        return int(row) if row else 0
 
 async def set_crypto_fee(fee: int):
     async with pool.acquire() as conn:
@@ -144,10 +175,40 @@ async def update_setting(key: str, value: str):
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         """, key, value)
 
+async def get_ai_setting(key: str) -> str:
+    async with pool.acquire() as conn:
+        row = await conn.fetchval("SELECT value FROM ai_settings WHERE key = $1", key)
+        return row
+
+async def update_ai_setting(key: str, value: str):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO ai_settings (key, value) VALUES ($1, $2) 
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, key, value)
+
+async def save_ai_chat_history(user_id: int, role: str, content: str):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO ai_chat_history (user_id, role, content) VALUES ($1, $2, $3)",
+            user_id, role, content
+        )
+
+async def get_ai_chat_history(user_id: int, limit: int = 10):
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            "SELECT role, content FROM ai_chat_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2",
+            user_id, limit
+        )
+
+async def clear_ai_chat_history(user_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM ai_chat_history WHERE user_id = $1", user_id)
+
 async def add_user(user_id: int, referrer_id: int = None):
     async with pool.acquire() as conn:
         await conn.execute(
-            "INSERT INTO users(user_id, referrer_id) VALUES($1, $2) ON CONFLICT (user_id) DO NOTHING",
+            "INSERT INTO users(user_id, balance, referrer_id) VALUES($1, 0, $2) ON CONFLICT (user_id) DO NOTHING",
             user_id, referrer_id
         )
 
@@ -194,15 +255,18 @@ async def add_balance(user_id: int, amount: int):
 
 async def get_all_products():
     async with pool.acquire() as conn:
-        return await conn.fetch("SELECT id, name, price FROM products ORDER BY id")
+        return await conn.fetch("SELECT id, name, price, photo_id FROM products ORDER BY id")
 
 async def get_product_by_id(product_id: int):
     async with pool.acquire() as conn:
-        return await conn.fetchrow("SELECT id, name, price FROM products WHERE id = $1", product_id)
+        return await conn.fetchrow("SELECT id, name, price, photo_id FROM products WHERE id = $1", product_id)
 
-async def add_product(name: str, price: int) -> int:
+async def add_product(name: str, price: int, photo_id: str = None) -> int:
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("INSERT INTO products (name, price) VALUES ($1, $2) RETURNING id", name, price)
+        row = await conn.fetchrow(
+            "INSERT INTO products (name, price, photo_id) VALUES ($1, $2, $3) RETURNING id",
+            name, price, photo_id
+        )
         return row["id"]
 
 async def delete_product(product_id: int):
@@ -283,48 +347,3 @@ async def get_all_promocodes():
 async def delete_promocode(promocode_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
-
-async def create_manual_order(user_id: int, product_id: int, amount: int) -> int:
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "INSERT INTO manual_orders (user_id, product_id, amount) VALUES ($1, $2, $3) RETURNING id",
-            user_id, product_id, amount
-        )
-        return row["id"]
-
-async def get_manual_order(order_id: int):
-    async with pool.acquire() as conn:
-        return await conn.fetchrow("SELECT * FROM manual_orders WHERE id = $1", order_id)
-
-async def update_manual_order_status(order_id: int, status: str):
-    async with pool.acquire() as conn:
-        await conn.execute("UPDATE manual_orders SET status = $1 WHERE id = $2", status, order_id)
-
-async def get_pending_manual_orders():
-    async with pool.acquire() as conn:
-        return await conn.fetch(
-            "SELECT mo.*, p.name as product_name FROM manual_orders mo "
-            "JOIN products p ON mo.product_id = p.id "
-            "WHERE mo.status = 'pending' ORDER BY mo.created_at DESC"
-        )
-
-async def save_pending_order(user_id: int, order_id: str, amount: int):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO pending_orders (user_id, order_id, amount) VALUES ($1, $2, $3)",
-            user_id, order_id, amount
-        )
-
-async def get_pending_order(order_id: str):
-    async with pool.acquire() as conn:
-        return await conn.fetchrow(
-            "SELECT * FROM pending_orders WHERE order_id = $1 AND status = 'pending'",
-            order_id
-        )
-
-async def update_order_status(order_id: str, status: str):
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE pending_orders SET status = $1 WHERE order_id = $2",
-            status, order_id
-        )
