@@ -1084,6 +1084,12 @@ async def ai_clear(callback: CallbackQuery):
 
 @dp.message(AIStates.chatting)
 async def ai_chat(message: Message, state: FSMContext):
+    # ПРОВЕРКА: если сообщение начинается с / - это команда, пропускаем
+    if message.text and message.text.startswith('/'):
+        await state.clear()  # Выходим из режима ИИ
+        # Перенаправляем в обычный обработчик команд
+        return
+    
     ai_enabled = await get_ai_setting("ai_enabled")
     if ai_enabled != "true":
         await message.answer(
