@@ -151,6 +151,8 @@ async def connect_db():
         INSERT INTO ai_settings (key, value) VALUES ('ai_model', 'mistralai/mistral-7b-instruct:free') ON CONFLICT (key) DO NOTHING
         """)
 
+# ===================== НАСТРОЙКИ =====================
+
 async def get_setting(key: str) -> str:
     async with pool.acquire() as conn:
         row = await conn.fetchval("SELECT value FROM bot_settings WHERE key = $1", key)
@@ -174,6 +176,8 @@ async def update_setting(key: str, value: str):
             INSERT INTO bot_settings (key, value) VALUES ($1, $2) 
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         """, key, value)
+
+# ===================== ИИ =====================
 
 async def get_ai_setting(key: str) -> str:
     async with pool.acquire() as conn:
@@ -204,6 +208,8 @@ async def get_ai_chat_history(user_id: int, limit: int = 10):
 async def clear_ai_chat_history(user_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM ai_chat_history WHERE user_id = $1", user_id)
+
+# ===================== ПОЛЬЗОВАТЕЛИ =====================
 
 async def add_user(user_id: int, referrer_id: int = None):
     async with pool.acquire() as conn:
@@ -253,6 +259,12 @@ async def add_balance(user_id: int, amount: int):
     async with pool.acquire() as conn:
         await conn.execute("UPDATE users SET balance = balance + $1 WHERE user_id = $2", amount, user_id)
 
+async def get_all_users():
+    async with pool.acquire() as conn:
+        return await conn.fetch("SELECT user_id FROM users")
+
+# ===================== ТОВАРЫ =====================
+
 async def get_all_products():
     async with pool.acquire() as conn:
         return await conn.fetch("SELECT id, name, price, photo_id FROM products ORDER BY id")
@@ -272,6 +284,8 @@ async def add_product(name: str, price: int, photo_id: str = None) -> int:
 async def delete_product(product_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM products WHERE id = $1", product_id)
+
+# ===================== КЛЮЧИ =====================
 
 async def add_keys_to_product(product_id: int, keys_list: list):
     async with pool.acquire() as conn:
@@ -294,6 +308,8 @@ async def get_unused_key(product_id: int):
 async def mark_key_as_used(key_id: int):
     async with pool.acquire() as conn:
         await conn.execute("UPDATE keys_store SET used = TRUE WHERE id = $1", key_id)
+
+# ===================== ПОКУПКИ =====================
 
 async def add_purchase(user_id: int, product_id: int, price: int):
     async with pool.acquire() as conn:
@@ -318,9 +334,7 @@ async def get_stats():
         keys_left = await conn.fetchval("SELECT COUNT(*) FROM keys_store WHERE used = FALSE")
         return {"users": users, "total_sales": total_sales, "keys_sold": keys_sold, "products_count": products_count, "keys_left": keys_left}
 
-async def get_all_users():
-    async with pool.acquire() as conn:
-        return await conn.fetch("SELECT user_id FROM users")
+# ===================== ПРОМОКОДЫ =====================
 
 async def create_promocode(code: str, discount_type: str, discount_value: int, max_uses: int):
     async with pool.acquire() as conn:
@@ -347,3 +361,50 @@ async def get_all_promocodes():
 async def delete_promocode(promocode_id: int):
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM promocodes WHERE id = $1", promocode_id)
+
+# ===================== РУЧНЫЕ ЗАКАЗЫ (НОВЫЕ ФУНКЦИИ) =====================
+
+async def create_manual_order(user_id: int, product_id: int, amount: int) -> int:
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "INSERT INTO manual_orders (user_id, product_id, amount) VALUES ($1, $2, $3) RETURNING id",
+            user_id, product_id, amount
+        )
+        return row["id"]
+
+async def get_manual_order(order_id: int):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow("SELECT * FROM manual_orders WHERE id = $1", order_id)
+
+async def update_manual_order_status(order_id: int, status: str):
+    async with pool.acquire() as conn:
+        await conn.execute("UPDATE manual_orders SET status = $1 WHERE id = $2", status, order_id)
+
+async def get_pending_manual_orders():
+    async with pool.acquire() as conn:
+        return await conn.fetch(
+            "SELECT mo.*, p.name as product_name FROM manual_orders mo "
+            "JOIN products p ON mo.product_id = p.id "
+            "WHERE mo.status = 'pending' ORDER BY mo.created_at DESC"
+        )
+
+async def save_pending_order(user_id: int, order_id: str, amount: int):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO pending_orders (user_id, order_id, amount) VALUES ($1, $2, $3)",
+            user_id, order_id, amount
+        )
+
+async def get_pending_order(order_id: str):
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            "SELECT * FROM pending_orders WHERE order_id = $1 AND status = 'pending'",
+            order_id
+        )
+
+async def update_order_status(order_id: str, status: str):
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE pending_orders SET status = $1 WHERE order_id = $2",
+            status, order_id
+        )
