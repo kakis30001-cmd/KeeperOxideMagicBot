@@ -91,7 +91,6 @@ EMOJI = {
     "dog_like": "5355207709916416525",  # собачка лайк
     "anime_hi": "5251586585903775041",  # аниме тян привет
 }
-}
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
     """Вставка премиум эмодзи с fallback"""
