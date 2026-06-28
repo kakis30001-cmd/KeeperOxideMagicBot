@@ -2,7 +2,7 @@ import aiohttp
 import json
 import asyncio
 from config import OPENROUTER_API_KEY, OPENROUTER_MODEL
-from database import get_ai_setting, save_ai_chat_history, get_ai_chat_history
+from database import get_ai_setting, update_ai_setting, save_ai_chat_history, get_ai_chat_history
 
 async def get_ai_response(user_id: int, user_message: str) -> str:
     print(f"[AI] Запрос от {user_id}: {user_message[:50]}...")
