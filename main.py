@@ -587,21 +587,6 @@ async def admin_reject_deposit(callback: CallbackQuery):
     except Exception as e:
         print(f"[AdminReject] Ошибка: {e}")
         await callback.answer(f"Ошибка: {str(e)}", show_alert=True)
-
-# -------- СТАРТ И ГЛАВНЫЕ МЕНЮ --------
-@dp.message(CommandStart())
-async def start_cmd(message: Message):
-    args = message.text.split()
-    referrer_id = None
-    if len(args) > 1 and args[1].startswith("ref_"):
-        try:
-            referrer_id = int(args[1].split("_")[1])
-            if referrer_id == message.from_user.id:
-                referrer_id = None
-        except:
-            pass
-    
-    await add_user(message.from_user.id, referrer_id)
     
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
