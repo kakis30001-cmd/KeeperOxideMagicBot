@@ -918,7 +918,7 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"{emoji(EMOJI['cat_surprised'], '😲')} <b>Платежная система временно недоступна</b>\n\n"
             f"Свяжитесь с администратором для ручного пополнения баланса.\n\n"
-            f"{emoji(EMOJI['person'], '👤')} Админ: @nikita1055",
+            f"{emoji(EMOJI['person'], '👤')} Админ: @ZOJlOTOY или SBveg",
             parse_mode="HTML",
             reply_markup=get_profile_keyboard()
         )
