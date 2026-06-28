@@ -9,7 +9,7 @@ async def get_ai_response(user_id: int, user_message: str) -> str:
     
     if not OPENROUTER_API_KEY:
         print("[AI] Нет API ключа!")
-        return "❌ ИИ-помощник временно недоступен. Обратитесь к @ZOJlOTOY SBveg"
+        return "❌ ИИ-помощник временно недоступен. Обратитесь к @ZOJlOTOY @SBveg"
     
     ai_enabled = await get_ai_setting("ai_enabled")
     print(f"[AI] ai_enabled: {ai_enabled}")
@@ -17,9 +17,19 @@ async def get_ai_response(user_id: int, user_message: str) -> str:
     if ai_enabled != "true":
         return "❌ ИИ-помощник отключен администратором."
     
+    # Берем модель из переменной окружения, если в БД нет или она старая
+    db_model = await get_ai_setting("ai_model")
+    model = db_model or OPENROUTER_MODEL
+    
+    # Если в БД старая модель - обновляем её
+    if db_model and db_model == "mistralai/mistral-7b-instruct:free":
+        model = "openai/gpt-oss-120b:free"
+        await update_ai_setting("ai_model", model)
+        print(f"[AI] Модель в БД обновлена на {model}")
+    
+    print(f"[AI] Используется модель: {model}")
+    
     system_prompt = await get_ai_setting("system_prompt")
-    model = await get_ai_setting("ai_model") or OPENROUTER_MODEL
-    print(f"[AI] Модель: {model}")
     
     history = await get_ai_chat_history(user_id, 5)
     messages = [{"role": "system", "content": system_prompt}]
