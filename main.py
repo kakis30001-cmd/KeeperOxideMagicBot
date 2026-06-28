@@ -604,11 +604,42 @@ async def start_cmd(message: Message):
     await add_user(message.from_user.id, referrer_id)
     
     text = (
-        f"{emoji(EMOJI['welcome'], '✨')} <b>Добро пожаловать в KeeperShop</b>\n\n"
-        f"{emoji(EMOJI['magic'], '✨')} <b>Официальный магазин ключей Magic</b>\n\n"
-        f"{emoji(EMOJI['arrow_down'], '👇')} <b>Для покупки товаров используйте кнопки ниже</b>"
+        f"███████╗██╗    ██╗███████╗ ██████╗ \n"
+        f"██╔════╝██║    ██║██╔════╝██╔════╝ \n"
+        f"███████╗██║ █╗ ██║█████╗  ██║  ███╗\n"
+        f"╚════██║██║███╗██║██╔══╝  ██║   ██║\n"
+        f"███████║╚███╔███╔╝███████╗╚██████╔╝\n"
+        f"╚══════╝ ╚══╝╚══╝ ╚══════╝ ╚═════╝ \n\n"
+        f"<b>━━━ ОФИЦИАЛЬНЫЙ МАГАЗИН ━━━</b>\n"
+        f"<b>🔥 КЛЮЧЕЙ ДЛЯ MAGIC</b>\n\n"
+        f"┌─────────────────────────┐\n"
+        f"│  🎯 <b>VIP ПАКЕТ</b>           │\n"
+        f"│  ██████████████████████  │\n"
+        f"│  ✦ Магические пули       │\n"
+        f"│  ✦ ESP (все видно)       │\n"
+        f"│  ✦ Аимбот (осторожно!)   │\n"
+        f"│  ✦ X-Ray (летать)        │\n"
+        f"│  ✦ Автофарм              │\n"
+        f"│  ██████████████████████  │\n"
+        f"│  💰 <b>Цена: от 500₽</b>      │\n"
+        f"└─────────────────────────┘\n\n"
+        f"⬇️ <b>ВЫБЕРИТЕ ДЕЙСТВИЕ:</b>\n\n"
+        f"🛍️ <b>Магазин</b> — купить ключ\n"
+        f"👤 <b>Профиль</b> — баланс\n"
+        f"🤖 <b>Джарвис</b> — ИИ-помощник\n\n"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+        f"📢 <a href='https://t.me/+SRX92UXTFepjNzRi'>Основной канал</a>\n"
+        f"💬 <a href='https://t.me/swegchatik'>Чат</a> | ⭐ <a href='https://t.me/+PGjL_HyU6ks2YTMy'>Отзывы</a>\n"
+        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+        f"📞 <i>Поддержка: @ZOJlOTOY</i>"
     )
-    await message.answer(text, parse_mode="HTML", reply_markup=get_main_keyboard())
+    
+    await message.answer(
+        text, 
+        parse_mode="HTML", 
+        disable_web_page_preview=True,
+        reply_markup=get_main_keyboard()
+    )
 
 @dp.callback_query(lambda c: c.data == "menu_main")
 async def menu_main(callback: CallbackQuery):
