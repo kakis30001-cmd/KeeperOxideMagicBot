@@ -603,44 +603,46 @@ async def start_cmd(message: Message):
     
     await add_user(message.from_user.id, referrer_id)
     
+    @dp.message(CommandStart())
+async def start_cmd(message: Message):
+    args = message.text.split()
+    referrer_id = None
+    if len(args) > 1 and args[1].startswith("ref_"):
+        try:
+            referrer_id = int(args[1].split("_")[1])
+            if referrer_id == message.from_user.id:
+                referrer_id = None
+        except:
+            pass
+    
+    await add_user(message.from_user.id, referrer_id)
+    
     text = (
-        f"███████╗██╗    ██╗███████╗ ██████╗ \n"
-        f"██╔════╝██║    ██║██╔════╝██╔════╝ \n"
-        f"███████╗██║ █╗ ██║█████╗  ██║  ███╗\n"
-        f"╚════██║██║███╗██║██╔══╝  ██║   ██║\n"
-        f"███████║╚███╔███╔╝███████╗╚██████╔╝\n"
-        f"╚══════╝ ╚══╝╚══╝ ╚══════╝ ╚═════╝ \n\n"
-        f"<b>━━━ ОФИЦИАЛЬНЫЙ МАГАЗИН ━━━</b>\n"
-        f"<b>🔥 КЛЮЧЕЙ ДЛЯ MAGIC</b>\n\n"
-        f"┌─────────────────────────┐\n"
-        f"│  🎯 <b>VIP ПАКЕТ</b>           │\n"
-        f"│  ██████████████████████  │\n"
-        f"│  ✦ Магические пули       │\n"
-        f"│  ✦ ESP (все видно)       │\n"
-        f"│  ✦ Аимбот (осторожно!)   │\n"
-        f"│  ✦ X-Ray (летать)        │\n"
-        f"│  ✦ Автофарм              │\n"
-        f"│  ██████████████████████  │\n"
-        f"│  💰 <b>Цена: от 500₽</b>      │\n"
-        f"└─────────────────────────┘\n\n"
-        f"⬇️ <b>ВЫБЕРИТЕ ДЕЙСТВИЕ:</b>\n\n"
-        f"🛍️ <b>Магазин</b> — купить ключ\n"
-        f"👤 <b>Профиль</b> — баланс\n"
-        f"🤖 <b>Джарвис</b> — ИИ-помощник\n\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"📢 <a href='https://t.me/+SRX92UXTFepjNzRi'>Основной канал</a>\n"
-        f"💬 <a href='https://t.me/swegchatik'>Чат</a> | ⭐ <a href='https://t.me/+PGjL_HyU6ks2YTMy'>Отзывы</a>\n"
-        f"▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
-        f"📞 <i>Поддержка: @ZOJlOTOY</i>"
+        f"{emoji(EMOJI['sparkles'], '✦')} <b>SWEG SHOP</b> {emoji(EMOJI['sparkles'], '✦')}\n"
+        f"━━━━━━━━━━━━━━━\n\n"
+        f"{emoji(EMOJI['fire'], '🔥')} <b>Официальный магазин</b>\n"
+        f"ключей для чита <b>MAGIC</b>\n\n"
+        f"┏━━━━━━━━━━━━━━━━━━┓\n"
+        f"┃ {emoji(EMOJI['crown'], '👑')} <b>VIP ФУНКЦИИ</b>     ┃\n"
+        f"┣━━━━━━━━━━━━━━━━━━┫\n"
+        f"┃ {emoji(EMOJI['joystick'], '🎯')} Маг. пули      ┃\n"
+        f"┃ {emoji(EMOJI['eye'], '👁️')} ESP            ┃\n"
+        f"┃ {emoji(EMOJI['target'], '🎯')} Аимбот         ┃\n"
+        f"┃ {emoji(EMOJI['ghost'], '👻')} X-Ray          ┃\n"
+        f"┃ {emoji(EMOJI['lightning'], '⚡')} Автофарм       ┃\n"
+        f"┗━━━━━━━━━━━━━━━━━━┛\n\n"
+        f"{emoji(EMOJI['dollar'], '💰')} <b>Цены от 500₽</b>\n\n"
+        f"{emoji(EMOJI['shop'], '🛍️')} <i>Нажмите «Магазин»</i>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{emoji(EMOJI['phone'], '📞')} <i>Поддержка: @ZOJlOTOY</i>"
     )
     
     await message.answer(
         text, 
         parse_mode="HTML", 
-        disable_web_page_preview=True,
         reply_markup=get_main_keyboard()
     )
-
+    
 @dp.callback_query(lambda c: c.data == "menu_main")
 async def menu_main(callback: CallbackQuery):
     text = f"{emoji(EMOJI['magic'], '✨')} <b>Главное меню</b>\n\nВыберите действие:"
