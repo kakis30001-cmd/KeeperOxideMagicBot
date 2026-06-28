@@ -660,7 +660,7 @@ async def menu_info(callback: CallbackQuery):
         f"• Основной канал: https://t.me/+SRX92UXTFepjNzRi\n"
         f"• Отзывы: https://t.me/+PGjL_HyU6ks2YTMy\n\n"
         f"{emoji(EMOJI['important'], '⚖')} <b>ДОКУМЕНТЫ:</b>\n"
-        f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
+        f"• <a href='https://telegra.ph/Politika-konfidencialnosti-06-21-31'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>\n\n"
         f"{emoji('5199942808214976824', '🤖')} <b>Похожего бота можно заказать у @ZOJlOTOY</b>"
     )
