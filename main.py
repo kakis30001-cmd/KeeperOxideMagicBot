@@ -613,20 +613,22 @@ async def start_cmd(message: Message):
     await add_user(message.from_user.id, referrer_id)
     
     text = (
-        f"{emoji(EMOJI['sparkles'], '✦')} <b>SWEG SHOP</b> {emoji(EMOJI['sparkles'], '✦')}\n"
-        "━━━━━━━━━━━━━━━\n\n"
+        f"{emoji(EMOJI['sparkles'], '✨')} <b>SWEG SHOP</b> {emoji(EMOJI['sparkles'], '✨')}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"{emoji(EMOJI['fire'], '🔥')} <b>Официальный магазин</b>\n"
-        "ключей для чита <b>MAGIC</b>\n\n"
-        "⭐ <b>VIP ФУНКЦИИ:</b>\n"
-        f"{emoji(EMOJI['joystick'], '🎯')} Маг. пули\n"
-        f"{emoji(EMOJI['eye'], '👁️')} ESP\n"
-        f"{emoji(EMOJI['target'], '🎯')} Аимбот\n"
-        f"{emoji(EMOJI['ghost'], '👻')} X-Ray\n"
+        f"ключей для чита {emoji(EMOJI['magic'], '🎩')} <b>MAGIC</b>\n\n"
+        f"{emoji(EMOJI['crown'], '👑')} <b>VIP ФУНКЦИИ:</b>\n"
+        f"{emoji(EMOJI['joystick'], '🎯')} Магические пули\n"
+        f"{emoji(EMOJI['eye'], '👁️')} ESP (все видно)\n"
+        f"{emoji(EMOJI['target'], '🎯')} Аимбот (НЕ НА ГОЛОВУ!)\n"
+        f"{emoji(EMOJI['ghost'], '👻')} X-Ray (сквозь стены)\n"
         f"{emoji(EMOJI['lightning'], '⚡')} Автофарм\n\n"
         f"{emoji(EMOJI['dollar'], '💰')} <b>Цены от 500₽</b>\n\n"
-        f"{emoji(EMOJI['shop'], '🛍️')} <i>Нажмите «Магазин»</i>\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"{emoji(EMOJI['phone'], '📞')} <i>Поддержка: @ZOJlOTOY</i>"
+        f"{emoji(EMOJI['shop'], '🛍️')} <i>Нажмите «Магазин»</i>\n"
+        f"{emoji(EMOJI['person'], '👤')} <i>или «Профиль» для баланса</i>\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{emoji(EMOJI['phone'], '📞')} <i>Поддержка: @ZOJlOTOY и @SBveg</i>\n"
+        f"{emoji(EMOJI['heart'], '❤️')} <i>Приятных покупок!</i>"
     )
     
     await message.answer(
