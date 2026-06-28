@@ -89,8 +89,12 @@ EMOJI = {
 }
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
-    """Возвращает обычный эмодзи (безопасно)"""
-    return fallback
+    """Вставка премиум эмодзи с fallback"""
+    if not sticker_id:
+        return fallback
+    if isinstance(sticker_id, str) and sticker_id.isdigit():
+        return f'<tg-emoji emoji-id="{sticker_id}">{fallback}</tg-emoji>'
+    return sticker_id
 
 # ===================== DNS ПАТЧ =====================
 _orig_getaddrinfo = socket.getaddrinfo
