@@ -7,9 +7,9 @@ from database import get_ai_setting, save_ai_chat_history, get_ai_chat_history
 # Список моделей для переключения
 MODELS = [
     "openai/gpt-oss-120b:free",
+    "deepseek/deepseek-v4-flash",
     "google/gemini-2.0-flash-lite-preview-02-05:free",
     "qwen/qwen-2.5-7b-instruct:free",
-    "deepseek/deepseek-v4-flash",
 ]
 
 async def get_ai_response(user_id: int, user_message: str) -> str:
