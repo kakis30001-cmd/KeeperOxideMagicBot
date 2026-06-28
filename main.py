@@ -603,7 +603,7 @@ async def start_cmd(message: Message):
     
     await add_user(message.from_user.id, referrer_id)
     
-    @dp.message(CommandStart())
+@dp.message(CommandStart())
 async def start_cmd(message: Message):
     args = message.text.split()
     referrer_id = None
@@ -638,8 +638,8 @@ async def start_cmd(message: Message):
     )
     
     await message.answer(
-        text, 
-        parse_mode="HTML", 
+        text,
+        parse_mode="HTML",
         reply_markup=get_main_keyboard()
     )
     
