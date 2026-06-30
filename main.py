@@ -740,6 +740,54 @@ async def menu_shop(callback: CallbackQuery):
     )
     await callback.answer()
 
+# ===================== ПРЕОБРАЗОВАНИЕ [ID] В ПРЕМИУМ ЭМОДЗИ =====================
+
+def convert_emoji_ids(text: str) -> str:
+    """
+    Заменяет [ID] и [ID|текст] на премиум эмодзи.
+    
+    Примеры:
+    [5271858835835858847] -> <tg-emoji emoji-id="5271858835835858847">[5271858835835858847]</tg-emoji>
+    [5271858835835858847|🔥] -> <tg-emoji emoji-id="5271858835835858847">🔥</tg-emoji>
+    [5271858835835858847|VIP] -> <tg-emoji emoji-id="5271858835835858847">VIP</tg-emoji>
+    """
+    if not text:
+        return text
+    
+    import re
+    
+    # Шаблон 1: [ID|текст] - с кастомным отображением
+    # Шаблон 2: [ID] - без кастомного отображения (показываем ID)
+    
+    # Сначала обрабатываем [ID|текст]
+    pattern_with_text = r'\[(\d+)\|([^\]]+)\]'
+    
+    def replace_with_text(match):
+        emoji_id = match.group(1)
+        display_text = match.group(2)
+        return f'<tg-emoji emoji-id="{emoji_id}">{display_text}</tg-emoji>'
+    
+    result = re.sub(pattern_with_text, replace_with_text, text)
+    
+    # Потом обрабатываем [ID] (без кастомного текста)
+    pattern_simple = r'\[(\d+)\]'
+    
+    def replace_simple(match):
+        emoji_id = match.group(1)
+        # Пытаемся найти fallback из словаря EMOJI
+        fallback = "🔹"
+        for key, value in EMOJI.items():
+            if value == emoji_id:
+                # Если нашли в словаре - используем соответствующий ключ
+                # Но у нас нет обратного маппинга, поэтому используем дефолт
+                fallback = "🔹"
+                break
+        return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
+    
+    result = re.sub(pattern_simple, replace_simple, result)
+    
+    return result
+
 # -------- ПРОФИЛЬ --------
 @dp.callback_query(lambda c: c.data == "menu_profile")
 async def menu_profile(callback: CallbackQuery):
@@ -1328,9 +1376,15 @@ async def admin_add_product(callback: CallbackQuery, state: FSMContext):
 async def product_name(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    await state.update_data(name=message.text)
+    
+    # Заменяем [ID] на премиум эмодзи
+    name_with_emoji = convert_emoji_ids(message.text)
+    await state.update_data(name=name_with_emoji)
     await state.set_state(AddProductStates.waiting_price)
-    await message.answer(f"{emoji(EMOJI['dollar'], '💰')} Введите цену (число):", parse_mode="HTML")
+    await message.answer(
+        f"{emoji(EMOJI['dollar'], '💰')} Введите цену (число):",
+        parse_mode="HTML"
+    )
 
 @dp.message(AddProductStates.waiting_price)
 async def product_price(message: Message, state: FSMContext):
@@ -1665,12 +1719,13 @@ async def process_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     
-    broadcast_text = message.text
+    # Заменяем [ID] на премиум эмодзи
+    broadcast_text = convert_emoji_ids(message.text)
     users = await get_all_users()
     
     await message.answer(
-        f"{emoji(EMOJI['notification'], '📢')} <b>Начинаю рассылку...</b>\n\n"
-        f"{emoji(EMOJI['person'], '👥')} Всего пользователей: <code>{len(users)}</code>",
+        f"📢 <b>Начинаю рассылку...</b>\n\n"
+        f"👥 Всего пользователей: <code>{len(users)}</code>",
         parse_mode="HTML"
     )
     
@@ -1681,7 +1736,7 @@ async def process_broadcast(message: Message, state: FSMContext):
         try:
             await bot.send_message(
                 user["user_id"],
-                f"{emoji(EMOJI['notification'], '📢')} <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
+                f"📢 <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
                 parse_mode="HTML"
             )
             success_count += 1
@@ -1691,14 +1746,14 @@ async def process_broadcast(message: Message, state: FSMContext):
     
     shop_mode = await get_setting("shop_mode")
     await message.answer(
-        f"{emoji(EMOJI['check'], '✅')} <b>Рассылка завершена!</b>\n\n"
-        f"{emoji(EMOJI['check'], '✅')} Доставлено: <code>{success_count}</code>\n"
-        f"{emoji(EMOJI['key'], '❌')} Не доставлено: <code>{fail_count}</code>",
+        f"✅ <b>Рассылка завершена!</b>\n\n"
+        f"✅ Доставлено: <code>{success_count}</code>\n"
+        f"❌ Не доставлено: <code>{fail_count}</code>",
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
     await state.clear()
-
+    
 # -------- АДМИН: ПРОМОКОДЫ --------
 @dp.callback_query(lambda c: c.data == "admin_create_promocode")
 async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
