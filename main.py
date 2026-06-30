@@ -33,6 +33,8 @@ from database import (
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
     get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders,
     get_crypto_fee, set_crypto_fee, get_ai_setting, update_ai_setting, save_ai_chat_history, get_ai_chat_history, clear_ai_chat_history
+    # ДОБАВЬ ЭТИ ДВЕ ФУНКЦИИ:
+    get_stars_rate, set_stars_rate, get_stars_fee, set_stars_fee
 )
 from ai_assistant import get_ai_response, clear_ai_context
 
