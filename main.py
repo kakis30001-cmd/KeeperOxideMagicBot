@@ -1475,7 +1475,13 @@ async def product_keys(message: Message, state: FSMContext):
         await message.answer(f"{emoji(EMOJI['key'], '❌')} Хотя бы один ключ", parse_mode="HTML")
         return
     
+    # Добавляем товар с названием (уже с эмодзи)
     product_id = await add_product(data["name"], data["price"], data.get("photo_id"))
+    
+    # Сохраняем clean_name и button_emoji_id для кнопки
+    # Можно сохранить в отдельную таблицу или в поле name
+    # Пока используем name с тегами
+    
     await add_keys_to_product(product_id, keys)
     
     shop_mode = await get_setting("shop_mode")
