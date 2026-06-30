@@ -727,10 +727,36 @@ async def menu_shop(callback: CallbackQuery):
         await callback.answer()
         return
     
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"{p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}", icon_custom_emoji_id=EMOJI["joystick"])]
-        for p in products
-    ] + [[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
+    kb_buttons = []
+    for p in products:
+        # Извлекаем ID для кнопки из названия (если есть)
+        import re
+        match = re.search(r'<tg-emoji emoji-id="(\d+)"', p['name'])
+        button_emoji_id = match.group(1) if match else None
+        
+        # Очищаем название от HTML-тегов для отображения в кнопке
+        clean_name = re.sub(r'<[^>]+>', '', p['name'])
+        
+        if button_emoji_id:
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=f"{clean_name} | {p['price']}₽",
+                    callback_data=f"buy_{p['id']}",
+                    icon_custom_emoji_id=button_emoji_id
+                )
+            ])
+        else:
+            kb_buttons.append([
+                InlineKeyboardButton(
+                    text=f"{clean_name} | {p['price']}₽",
+                    callback_data=f"buy_{p['id']}",
+                    icon_custom_emoji_id=EMOJI["joystick"]
+                )
+            ])
+    
+    kb_buttons.append([InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])])
+    
+    kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
     
     await callback.message.edit_text(
         f"{emoji(EMOJI['store'], '🛍')} <b>Выберите интересующий вас товар</b>",
