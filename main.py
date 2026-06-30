@@ -703,7 +703,7 @@ async def menu_info(callback: CallbackQuery):
         f"• Приобретите ключ через меню\n"
         f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         f"{emoji(EMOJI['phone'], '📞')} <b>КОНТАКТЫ:</b>\n"
-        f"• Техподдержка: @ZOJlOTOY SBveg\n"
+        f"• Техподдержка: @ZOJlOTOY @SBveg\n"
         f"• Основной канал: https://t.me/+SRX92UXTFepjNzRi\n"
         f"• Отзывы: https://t.me/+PGjL_HyU6ks2YTMy\n\n"
         f"{emoji(EMOJI['important'], '⚖')} <b>ДОКУМЕНТЫ:</b>\n"
@@ -1147,6 +1147,26 @@ async def handle_buy(callback: CallbackQuery):
     await callback.answer(f"{emoji(EMOJI['cat_dance'], '💃')} Покупка успешна!")
 
 # -------- ИИ-ПОМОЩНИК (НОВОЕ) --------
+@dp.message(AIStates.chatting, lambda m: m.text and not m.text.startswith('/'))
+async def ai_chat(message: Message, state: FSMContext):
+    ai_enabled = await get_ai_setting("ai_enabled")
+    if ai_enabled != "true":
+        await message.answer(
+            f"{emoji(EMOJI['key'], '❌')} ИИ-помощник временно отключен администратором.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    await bot.send_chat_action(message.chat.id, "typing")
+    response = await get_ai_response(message.from_user.id, message.text)
+    
+    await message.reply(
+        f"{emoji(EMOJI['ai'], '🤖')} {response}",
+        parse_mode="HTML",
+        reply_markup=get_ai_keyboard()
+    )
+
 @dp.callback_query(lambda c: c.data == "menu_ai")
 async def menu_ai(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AIStates.chatting)
@@ -1170,26 +1190,6 @@ async def ai_clear(callback: CallbackQuery):
         reply_markup=get_ai_keyboard()
     )
     await callback.answer()
-
-@dp.message(AIStates.chatting)
-async def ai_chat(message: Message, state: FSMContext):
-    ai_enabled = await get_ai_setting("ai_enabled")
-    if ai_enabled != "true":
-        await message.answer(
-            f"{emoji(EMOJI['key'], '❌')} ИИ-помощник временно отключен администратором.",
-            parse_mode="HTML"
-        )
-        await state.clear()
-        return
-    
-    await bot.send_chat_action(message.chat.id, "typing")
-    response = await get_ai_response(message.from_user.id, message.text)
-    
-    await message.reply(
-        f"{emoji(EMOJI['ai'], '🤖')} {response}",
-        parse_mode="HTML",
-        reply_markup=get_ai_keyboard()
-    )
 
 # -------- АДМИН-ПАНЕЛЬ --------
 @dp.message(Command("admin"))
