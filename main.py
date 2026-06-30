@@ -739,54 +739,64 @@ async def menu_shop(callback: CallbackQuery):
     )
     await callback.answer()
 
-# ===================== ПРЕОБРАЗОВАНИЕ [ID] В ПРЕМИУМ ЭМОДЗИ =====================
+# ===================== ПРЕОБРАЗОВАНИЕ [ID] ДЛЯ ТЕКСТА И КНОПОК =====================
 
-def convert_emoji_ids(text: str) -> str:
+def convert_emoji_ids(text: str, for_button: bool = False) -> str:
     """
     Заменяет [ID] и [ID|текст] на премиум эмодзи.
     
+    Для текста: [ID|🔥] -> <tg-emoji emoji-id="ID">🔥</tg-emoji>
+    Для кнопок: [ID] -> ID (используется в icon_custom_emoji_id)
+    
     Примеры:
-    [5271858835835858847] -> <tg-emoji emoji-id="5271858835835858847">[5271858835835858847]</tg-emoji>
-    [5271858835835858847|🔥] -> <tg-emoji emoji-id="5271858835835858847">🔥</tg-emoji>
-    [5271858835835858847|VIP] -> <tg-emoji emoji-id="5271858835835858847">VIP</tg-emoji>
+    [5271858835835858847|🔥] -> для текста: <tg-emoji emoji-id="...">🔥</tg-emoji>
+    [5271858835835858847] -> для кнопки: 5271858835835858847
     """
     if not text:
         return text
     
     import re
     
-    # Шаблон 1: [ID|текст] - с кастомным отображением
-    # Шаблон 2: [ID] - без кастомного отображения (показываем ID)
-    
-    # Сначала обрабатываем [ID|текст]
-    pattern_with_text = r'\[(\d+)\|([^\]]+)\]'
-    
-    def replace_with_text(match):
-        emoji_id = match.group(1)
-        display_text = match.group(2)
-        return f'<tg-emoji emoji-id="{emoji_id}">{display_text}</tg-emoji>'
-    
-    result = re.sub(pattern_with_text, replace_with_text, text)
-    
-    # Потом обрабатываем [ID] (без кастомного текста)
-    pattern_simple = r'\[(\d+)\]'
-    
-    def replace_simple(match):
-        emoji_id = match.group(1)
-        # Пытаемся найти fallback из словаря EMOJI
-        fallback = "🔹"
-        for key, value in EMOJI.items():
-            if value == emoji_id:
-                # Если нашли в словаре - используем соответствующий ключ
-                # Но у нас нет обратного маппинга, поэтому используем дефолт
-                fallback = "🔹"
-                break
-        return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
-    
-    result = re.sub(pattern_simple, replace_simple, result)
-    
-    return result
+    if for_button:
+        # Для кнопок: возвращаем только ID без тегов
+        pattern = r'\[(\d+)(?:\|[^\]]+)?\]'
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)  # Только ID
+        return text
+    else:
+        # Для текста: заменяем на tg-emoji теги
+        pattern_with_text = r'\[(\d+)\|([^\]]+)\]'
+        def replace_with_text(match):
+            emoji_id = match.group(1)
+            display_text = match.group(2)
+            return f'<tg-emoji emoji-id="{emoji_id}">{display_text}</tg-emoji>'
+        
+        result = re.sub(pattern_with_text, replace_with_text, text)
+        
+        pattern_simple = r'\[(\d+)\]'
+        def replace_simple(match):
+            emoji_id = match.group(1)
+            return f'<tg-emoji emoji-id="{emoji_id}">🔹</tg-emoji>'
+        
+        result = re.sub(pattern_simple, replace_simple, result)
+        return result
 
+def extract_emoji_id(text: str) -> str:
+    """
+    Извлекает ID из [ID] или [ID|текст] для использования в кнопках.
+    Пример: [5271858835835858847|🔥] -> 5271858835835858847
+    """
+    if not text:
+        return ""
+    
+    import re
+    pattern = r'\[(\d+)(?:\|[^\]]+)?\]'
+    match = re.search(pattern, text)
+    if match:
+        return match.group(1)
+    return text
+    
 # -------- ПРОФИЛЬ --------
 @dp.callback_query(lambda c: c.data == "menu_profile")
 async def menu_profile(callback: CallbackQuery):
@@ -1376,9 +1386,27 @@ async def product_name(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     
-    # Заменяем [ID] на премиум эмодзи
-    name_with_emoji = convert_emoji_ids(message.text)
-    await state.update_data(name=name_with_emoji)
+    raw_name = message.text
+    
+    # Сохраняем оригинальный текст для отображения в меню
+    display_name = convert_emoji_ids(raw_name, for_button=False)
+    
+    # Извлекаем ID для кнопки (если есть)
+    button_emoji_id = extract_emoji_id(raw_name)
+    
+    # Очищаем название от [ID] для отображения в кнопке
+    import re
+    clean_name = re.sub(r'\[(\d+)(?:\|[^\]]+)?\]', '', raw_name).strip()
+    if not clean_name:
+        clean_name = raw_name
+    
+    # Сохраняем и то и другое
+    await state.update_data(
+        name=display_name,
+        clean_name=clean_name,
+        button_emoji_id=button_emoji_id
+    )
+    
     await state.set_state(AddProductStates.waiting_price)
     await message.answer(
         f"{emoji(EMOJI['dollar'], '💰')} Введите цену (число):",
