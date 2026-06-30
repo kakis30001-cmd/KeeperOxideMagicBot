@@ -177,6 +177,32 @@ async def update_setting(key: str, value: str):
             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
         """, key, value)
 
+# ===================== ЗВЕЗДЫ (НОВОЕ) =====================
+
+async def get_stars_fee() -> int:
+    async with pool.acquire() as conn:
+        row = await conn.fetchval("SELECT value FROM bot_settings WHERE key = 'stars_fee'")
+        return int(row) if row else 0
+
+async def set_stars_fee(fee: int):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO bot_settings (key, value) VALUES ('stars_fee', $1)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, str(fee))
+
+async def get_stars_rate() -> float:
+    async with pool.acquire() as conn:
+        row = await conn.fetchval("SELECT value FROM bot_settings WHERE key = 'stars_rate'")
+        return float(row) if row else 0.15
+
+async def set_stars_rate(rate: float):
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO bot_settings (key, value) VALUES ('stars_rate', $1)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+        """, str(rate))
+
 # ===================== ИИ =====================
 
 async def get_ai_setting(key: str) -> str:
