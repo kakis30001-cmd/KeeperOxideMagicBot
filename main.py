@@ -147,6 +147,9 @@ class AddKeysStates(StatesGroup):
     waiting_product_id = State()
     waiting_keys = State()
 
+class AdminStarsRateStates(StatesGroup):  # НОВОЕ: для настройки курса звезд
+    waiting_rate = State()
+
 class DepositStates(StatesGroup):
     waiting_amount = State()
     waiting_method = State() 
@@ -390,7 +393,7 @@ def get_admin_keyboard(shop_mode="auto"):
             InlineKeyboardButton(text="Комиссия крипты", callback_data="admin_crypto_fee", icon_custom_emoji_id=EMOJI["crypto"])
         ],
         [
-            InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_mode"),
+            InlineKeyboardButton(text="⭐ Курс звезд", callback_data="admin_stars_rate", icon_custom_emoji_id=EMOJI["gift"]),  # НОВОЕ
             InlineKeyboardButton(text="Текст кастома", callback_data="admin_change_custom_text", icon_custom_emoji_id=EMOJI["edit"])
         ],
         [
@@ -420,6 +423,50 @@ def get_admin_ai_keyboard():
     ])
 
 # ===================== ОБРАБОТЧИКИ =====================
+
+# -------- АДМИН: НАСТРОЙКА КУРСА ЗВЕЗД (НОВОЕ) --------
+@dp.callback_query(lambda c: c.data == "admin_stars_rate")
+async def admin_stars_rate(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        await callback.answer(f"{emoji(EMOJI['key'], '⛔')} Доступ запрещен", show_alert=True)
+        return
+    
+    current_rate = await get_stars_rate()
+    await state.set_state(AdminStarsRateStates.waiting_rate)
+    await callback.message.answer(
+        f"{emoji(EMOJI['gift'], '⭐')} <b>Настройка курса звезд</b>\n\n"
+        f"Текущий курс: 1 ⭐ = {current_rate} ₽\n\n"
+        f"Введите новый курс (число):\n\n"
+        f"Пример: <code>0.15</code> - 1 звезда = 0.15 ₽",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="◀️ Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
+        ])
+    )
+    await callback.answer()
+
+@dp.message(AdminStarsRateStates.waiting_rate)
+async def process_stars_rate(message: Message, state: FSMContext):
+    if not is_admin(message.from_user.id):
+        return
+    
+    try:
+        rate = float(message.text.replace(",", "."))
+        if rate <= 0:
+            await message.answer(f"{emoji(EMOJI['key'], '❌')} Курс должен быть больше 0", parse_mode="HTML")
+            return
+        
+        await set_stars_rate(rate)
+        shop_mode = await get_setting("shop_mode")
+        await message.answer(
+            f"{emoji(EMOJI['check'], '✅')} <b>Курс звезд обновлен!</b>\n\n"
+            f"1 ⭐ = {rate} ₽",
+            parse_mode="HTML",
+            reply_markup=get_admin_keyboard(shop_mode)
+        )
+        await state.clear()
+    except ValueError:
+        await message.answer(f"{emoji(EMOJI['key'], '❌')} Введите число (например, 0.15)", parse_mode="HTML")
 
 # -------- РУЧНОЕ ПОПОЛНЕНИЕ (ВЕСЬ КОД) --------
 pending_deposits = {}
@@ -829,11 +876,13 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.set_state(DepositStates.waiting_method)
         
+        # Комиссия ПОКАЗЫВАЕТСЯ, но применяется ТОЛЬКО для крипты
         crypto_fee = await get_crypto_fee()
         fee_text = ""
         if crypto_fee > 0:
             amount_to_pay = int(amount * 100 / (100 - crypto_fee))
             fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nК оплате: <code>{amount_to_pay} ₽</code>\nНа баланс поступит: <code>{amount} ₽</code>"
+            fee_text += f"\n\n<i>⚠️ Комиссия применяется только при оплате криптовалютой</i>"
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -858,7 +907,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             f"{emoji(EMOJI['key'], '❌')} Введите число!\n\nПример: <code>500</code>",
             parse_mode="HTML"
         )
-
+        
 @dp.callback_query(DepositStates.waiting_method, lambda c: c.data in ["pay_method_platega", "pay_method_crypto"])
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
