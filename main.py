@@ -2093,17 +2093,14 @@ async def admin_stats(callback: CallbackQuery):
         f"{emoji(EMOJI['dollar'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
         f"{emoji(EMOJI['key'], '🔑')} Выдано ключей: <code>{stats['keys_sold']}</code>\n"
         f"{emoji(EMOJI['key'], '🔑')} Осталось ключей: <code>{stats['keys_left']}</code>\n"
-        f"{emoji(EMOJI['store'], '📦')} Товаров в продаже: <code>{stats['products_count']}</code>",
+        f"{emoji(EMOJI['store'], '📦')} Товаров в продаже: <code>{stats['products_count']}</code>"
+    )
+    
+    await callback.message.edit_text(
+        text,
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
-    
-    # Проверяем, изменилось ли сообщение
-    if callback.message.text != text:
-        await callback.message.edit_text(text)
-    else:
-        await callback.answer("Данные не изменились", show_alert=False)
-    
     await callback.answer()
 
 # -------- АДМИН: НАСТРОЙКА ИИ (НОВОЕ) --------
@@ -2205,7 +2202,7 @@ async def admin_ai_stats(callback: CallbackQuery):
         f"👥 <b>Уникальных пользователей:</b> {unique_users}\n"
         f"📈 <b>За 24 часа:</b> {last_24h}\n\n"
         f"<i>Статистика обновляется автоматически</i>",
-        parse_mode="HTML",
+        parse_mode="HTML",  # ← ПОСЛЕ ЭТОЙ СТРОКИ ДОЛЖНА БЫТЬ ЗАПЯТАЯ!
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ai_settings", icon_custom_emoji_id=EMOJI["arrow_back"])]
         ])
