@@ -2053,9 +2053,11 @@ async def admin_stats(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer(f"{emoji(EMOJI['key'], '⛔')}")
         return
+    
     stats = await get_stats()
     shop_mode = await get_setting("shop_mode")
-    await callback.message.edit_text(
+    
+    text = (
         f"{emoji(EMOJI['crown'], '📊')} <b>Статистика</b>\n\n"
         f"{emoji(EMOJI['person'], '👥')} Пользователей: <code>{stats['users']}</code>\n"
         f"{emoji(EMOJI['dollar'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
@@ -2065,6 +2067,13 @@ async def admin_stats(callback: CallbackQuery):
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
+    
+    # Проверяем, изменилось ли сообщение
+    if callback.message.text != text:
+        await callback.message.edit_text(text)
+    else:
+        await callback.answer("Данные не изменились", show_alert=False)
+    
     await callback.answer()
 
 # -------- АДМИН: НАСТРОЙКА ИИ (НОВОЕ) --------
