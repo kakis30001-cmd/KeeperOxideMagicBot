@@ -826,13 +826,43 @@ def extract_emoji_id(text: str) -> str:
 # -------- ПРОФИЛЬ --------
 @dp.callback_query(lambda c: c.data == "menu_profile")
 async def menu_profile(callback: CallbackQuery):
-    balance = await get_balance(callback.from_user.id)
+    user_id = callback.from_user.id
+    balance = await get_balance(user_id)
+    
+    # Получаем информацию о пользователе
+    user = await bot.get_chat(user_id)
+    username = user.username or "Нет юзернейма"
+    first_name = user.first_name or "Пользователь"
+    
+    # Получаем фото профиля
+    photos = await bot.get_user_profile_photos(user_id, limit=1)
+    
     text = (
         f"{emoji(EMOJI['person'], '👤')} <b>Профиль</b>\n\n"
-        f"{emoji(EMOJI['verified'], '🆔')} ID: <code>{callback.from_user.id}</code>\n"
-        f"{emoji(EMOJI['almaz'], '💰')} Баланс: <code>{balance} ₽</code>"
+        f"👤 <b>Имя:</b> {first_name}\n"
+        f"🔗 <b>Юзернейм:</b> @{username if username != 'Нет юзернейма' else 'Нет'}\n"
+        f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
+        f"{emoji(EMOJI['almaz'], '💰')} <b>Баланс:</b> <code>{balance} ₽</code>"
     )
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_profile_keyboard())
+    
+    # Если есть фото - отправляем с фото
+    if photos.total_count > 0:
+        photo = photos.photos[0][-1]  # Самое большое фото
+        await callback.message.delete()
+        await callback.message.answer_photo(
+            photo=photo.file_id,
+            caption=text,
+            parse_mode="HTML",
+            reply_markup=get_profile_keyboard()
+        )
+    else:
+        # Если фото нет - просто редактируем сообщение
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=get_profile_keyboard()
+        )
+    
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_referral")
