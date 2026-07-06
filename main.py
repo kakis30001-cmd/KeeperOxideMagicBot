@@ -2520,37 +2520,30 @@ async def process_stars_rate(message: Message, state: FSMContext):
 @dp.callback_query(lambda c: c.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer(f"{emoji(EMOJI['forbidden'], '⛔')}")
+        await callback.answer(
+            f"{emoji(EMOJI['forbidden'], '⛔')}",
+            show_alert=True
+        )
         return
-    
+
     stats = await get_stats()
     shop_mode = await get_setting("shop_mode")
-    
-   text = (
-    f"{emoji(EMOJI['crown'], '📊')} <b>Статистика</b>\n\n"
-    f"{emoji(EMOJI['person'], '👥')} Пользователей: <code>{stats['users']}</code>\n"
-    f"{emoji(EMOJI['dollar'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
-    f"{emoji(EMOJI['key'], '🔑')} Выдано ключей: <code>{stats['keys_sold']}</code>\n"
-    f"{emoji(EMOJI['key'], '🔑')} Осталось ключей: <code>{stats['keys_left']}</code>\n"
-    f"{emoji(EMOJI['store'], '📦')} Товаров в продаже: <code>{stats['products_count']}</code>"
-)
 
-if callback.message.text != text:
+    text = (
+        f"{emoji(EMOJI['crown'], '📊')} <b>Статистика</b>\n\n"
+        f"{emoji(EMOJI['person'], '👥')} Пользователей: <code>{stats['users']}</code>\n"
+        f"{emoji(EMOJI['dollar'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
+        f"{emoji(EMOJI['key'], '🔑')} Выдано ключей: <code>{stats['keys_sold']}</code>\n"
+        f"{emoji(EMOJI['key'], '🔑')} Осталось ключей: <code>{stats['keys_left']}</code>\n"
+        f"{emoji(EMOJI['store'], '📦')} Товаров в продаже: <code>{stats['products_count']}</code>"
+    )
+
     await callback.message.edit_text(
         text,
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
-else:
-    await callback.answer("Данные не изменились")
 
-return
-    
-    if callback.message.text != text:
-        await callback.message.edit_text(text)
-    else:
-        await callback.answer("Данные не изменились", show_alert=False)
-    
     await callback.answer()
 
 # -------- АДМИН: НАСТРОЙКА ИИ --------
