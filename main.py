@@ -32,8 +32,7 @@ from database import (
     get_referral_config, update_referral_config, add_balance, get_product_by_id,
     delete_product, get_keys_by_product, delete_key, mark_purchased, has_user_purchased,
     get_setting, update_setting, create_manual_order, get_manual_order, update_manual_order_status, get_pending_manual_orders,
-    get_crypto_fee, set_crypto_fee, get_ai_setting, update_ai_setting, save_ai_chat_history, get_ai_chat_history, clear_ai_chat_history,
-    get_stars_rate, set_stars_rate, get_stars_fee, set_stars_fee
+    get_crypto_fee, set_crypto_fee, get_ai_setting, update_ai_setting, save_ai_chat_history, get_ai_chat_history, clear_ai_chat_history
 )
 from ai_assistant import get_ai_response, clear_ai_context
 
@@ -51,7 +50,7 @@ EMOJI = {
     "document": "5875206779196935950",
     "folder": "5877332341331857066",
     "discount": "5843843420468024653",
-    "person": "5879770735999717115",  # человек за ноутбуком
+    "person": "5971889748615105853",  # человек за ноутбуком
     "clock": "5985616167740379273",
     "repeat": "5845943483382110702",
     "important": "5775887550262546277",
@@ -80,7 +79,7 @@ EMOJI = {
     "edit": "5985774024968379294",
     "camera": "5870856037455630084",
     "cat": "5359444458930718519",
-    "ai": "5433903768615790484",
+    "ai": "5359436684968383617",
     "sparkles": "5294378045153505350",  # новые искры
     "fire": "5271858835835858847",
     "eye": "5960714428394507968",
@@ -91,6 +90,7 @@ EMOJI = {
     "dog_heart": "5355021510199231560",  # собачка с сердечком
     "dog_like": "5355207709916416525",  # собачка лайк
     "anime_hi": "5251586585903775041",  # аниме тян привет
+}
 }
 
 def emoji(sticker_id: str, fallback: str = "") -> str:
@@ -147,9 +147,6 @@ class AddProductStates(StatesGroup):
 class AddKeysStates(StatesGroup):
     waiting_product_id = State()
     waiting_keys = State()
-
-class AdminStarsRateStates(StatesGroup):  # НОВОЕ: для настройки курса звезд
-    waiting_rate = State()
 
 class DepositStates(StatesGroup):
     waiting_amount = State()
@@ -394,7 +391,7 @@ def get_admin_keyboard(shop_mode="auto"):
             InlineKeyboardButton(text="Комиссия крипты", callback_data="admin_crypto_fee", icon_custom_emoji_id=EMOJI["crypto"])
         ],
         [
-            InlineKeyboardButton(text="⭐ Курс звезд", callback_data="admin_stars_rate", icon_custom_emoji_id=EMOJI["gift"]),  # НОВОЕ
+            InlineKeyboardButton(text=mode_text, callback_data="admin_toggle_mode"),
             InlineKeyboardButton(text="Текст кастома", callback_data="admin_change_custom_text", icon_custom_emoji_id=EMOJI["edit"])
         ],
         [
@@ -424,50 +421,6 @@ def get_admin_ai_keyboard():
     ])
 
 # ===================== ОБРАБОТЧИКИ =====================
-
-# -------- АДМИН: НАСТРОЙКА КУРСА ЗВЕЗД (НОВОЕ) --------
-@dp.callback_query(lambda c: c.data == "admin_stars_rate")
-async def admin_stars_rate(callback: CallbackQuery, state: FSMContext):
-    if not is_admin(callback.from_user.id):
-        await callback.answer(f"{emoji(EMOJI['key'], '⛔')} Доступ запрещен", show_alert=True)
-        return
-    
-    current_rate = await get_stars_rate()
-    await state.set_state(AdminStarsRateStates.waiting_rate)
-    await callback.message.answer(
-        f"{emoji(EMOJI['gift'], '⭐')} <b>Настройка курса звезд</b>\n\n"
-        f"Текущий курс: 1 ⭐ = {current_rate} ₽\n\n"
-        f"Введите новый курс (число):\n\n"
-        f"Пример: <code>0.15</code> - 1 звезда = 0.15 ₽",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Отмена", callback_data="admin_back", icon_custom_emoji_id=EMOJI["arrow_back"])]
-        ])
-    )
-    await callback.answer()
-
-@dp.message(AdminStarsRateStates.waiting_rate)
-async def process_stars_rate(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id):
-        return
-    
-    try:
-        rate = float(message.text.replace(",", "."))
-        if rate <= 0:
-            await message.answer(f"{emoji(EMOJI['key'], '❌')} Курс должен быть больше 0", parse_mode="HTML")
-            return
-        
-        await set_stars_rate(rate)
-        shop_mode = await get_setting("shop_mode")
-        await message.answer(
-            f"{emoji(EMOJI['check'], '✅')} <b>Курс звезд обновлен!</b>\n\n"
-            f"1 ⭐ = {rate} ₽",
-            parse_mode="HTML",
-            reply_markup=get_admin_keyboard(shop_mode)
-        )
-        await state.clear()
-    except ValueError:
-        await message.answer(f"{emoji(EMOJI['key'], '❌')} Введите число (например, 0.15)", parse_mode="HTML")
 
 # -------- РУЧНОЕ ПОПОЛНЕНИЕ (ВЕСЬ КОД) --------
 pending_deposits = {}
@@ -704,11 +657,11 @@ async def menu_info(callback: CallbackQuery):
         f"• Приобретите ключ через меню\n"
         f"• После оплаты вы получите ключ и доступ в VIP канал\n\n"
         f"{emoji(EMOJI['phone'], '📞')} <b>КОНТАКТЫ:</b>\n"
-        f"• Техподдержка: @ZOJlOTOY @SBveg\n"
+        f"• Техподдержка: @ZOJlOTOY SBveg\n"
         f"• Основной канал: https://t.me/+SRX92UXTFepjNzRi\n"
         f"• Отзывы: https://t.me/+PGjL_HyU6ks2YTMy\n\n"
         f"{emoji(EMOJI['important'], '⚖')} <b>ДОКУМЕНТЫ:</b>\n"
-        f"• <a href='https://telegra.ph/Politika-konfidencialnosti-06-21-31'>Политика конфиденциальности</a>\n"
+        f"• <a href='https://telegra.ph/Politika-konfidencialnosti-04-01-26'>Политика конфиденциальности</a>\n"
         f"• <a href='https://telegra.ph/Polzovatelskoe-soglashenie-04-01-19'>Пользовательское соглашение</a>\n\n"
         f"{emoji('5199942808214976824', '🤖')} <b>Похожего бота можно заказать у @ZOJlOTOY</b>"
     )
@@ -727,36 +680,10 @@ async def menu_shop(callback: CallbackQuery):
         await callback.answer()
         return
     
-    kb_buttons = []
-    for p in products:
-        # Извлекаем ID для кнопки из названия (если есть)
-        import re
-        match = re.search(r'<tg-emoji emoji-id="(\d+)"', p['name'])
-        button_emoji_id = match.group(1) if match else None
-        
-        # Очищаем название от HTML-тегов для отображения в кнопке
-        clean_name = re.sub(r'<[^>]+>', '', p['name'])
-        
-        if button_emoji_id:
-            kb_buttons.append([
-                InlineKeyboardButton(
-                    text=f"{clean_name} | {p['price']}₽",
-                    callback_data=f"buy_{p['id']}",
-                    icon_custom_emoji_id=button_emoji_id
-                )
-            ])
-        else:
-            kb_buttons.append([
-                InlineKeyboardButton(
-                    text=f"{clean_name} | {p['price']}₽",
-                    callback_data=f"buy_{p['id']}",
-                    icon_custom_emoji_id=EMOJI["joystick"]
-                )
-            ])
-    
-    kb_buttons.append([InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])])
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{p['name']} | {p['price']}₽", callback_data=f"buy_{p['id']}", icon_custom_emoji_id=EMOJI["joystick"])]
+        for p in products
+    ] + [[InlineKeyboardButton(text="Назад", callback_data="menu_main", icon_custom_emoji_id=EMOJI["arrow_back"])]])
     
     await callback.message.edit_text(
         f"{emoji(EMOJI['store'], '🛍')} <b>Выберите интересующий вас товар</b>",
@@ -765,104 +692,16 @@ async def menu_shop(callback: CallbackQuery):
     )
     await callback.answer()
 
-# ===================== ПРЕОБРАЗОВАНИЕ [ID] ДЛЯ ТЕКСТА И КНОПОК =====================
-
-def convert_emoji_ids(text: str, for_button: bool = False) -> str:
-    """
-    Заменяет [ID] и [ID|текст] на премиум эмодзи.
-    
-    Для текста: [ID|🔥] -> <tg-emoji emoji-id="ID">🔥</tg-emoji>
-    Для кнопок: [ID] -> ID (используется в icon_custom_emoji_id)
-    
-    Примеры:
-    [5271858835835858847|🔥] -> для текста: <tg-emoji emoji-id="...">🔥</tg-emoji>
-    [5271858835835858847] -> для кнопки: 5271858835835858847
-    """
-    if not text:
-        return text
-    
-    import re
-    
-    if for_button:
-        # Для кнопок: возвращаем только ID без тегов
-        pattern = r'\[(\d+)(?:\|[^\]]+)?\]'
-        match = re.search(pattern, text)
-        if match:
-            return match.group(1)  # Только ID
-        return text
-    else:
-        # Для текста: заменяем на tg-emoji теги
-        pattern_with_text = r'\[(\d+)\|([^\]]+)\]'
-        def replace_with_text(match):
-            emoji_id = match.group(1)
-            display_text = match.group(2)
-            return f'<tg-emoji emoji-id="{emoji_id}">{display_text}</tg-emoji>'
-        
-        result = re.sub(pattern_with_text, replace_with_text, text)
-        
-        pattern_simple = r'\[(\d+)\]'
-        def replace_simple(match):
-            emoji_id = match.group(1)
-            return f'<tg-emoji emoji-id="{emoji_id}">🔹</tg-emoji>'
-        
-        result = re.sub(pattern_simple, replace_simple, result)
-        return result
-
-def extract_emoji_id(text: str) -> str:
-    """
-    Извлекает ID из [ID] или [ID|текст] для использования в кнопках.
-    Пример: [5271858835835858847|🔥] -> 5271858835835858847
-    """
-    if not text:
-        return ""
-    
-    import re
-    pattern = r'\[(\d+)(?:\|[^\]]+)?\]'
-    match = re.search(pattern, text)
-    if match:
-        return match.group(1)
-    return text
-    
 # -------- ПРОФИЛЬ --------
 @dp.callback_query(lambda c: c.data == "menu_profile")
 async def menu_profile(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    balance = await get_balance(user_id)
-    
-    # Получаем информацию о пользователе
-    user = await bot.get_chat(user_id)
-    username = user.username or "Нет юзернейма"
-    first_name = user.first_name or "Пользователь"
-    
-    # Получаем фото профиля
-    photos = await bot.get_user_profile_photos(user_id, limit=1)
-    
+    balance = await get_balance(callback.from_user.id)
     text = (
         f"{emoji(EMOJI['person'], '👤')} <b>Профиль</b>\n\n"
-        f"👤 <b>Имя:</b> {first_name}\n"
-        f"🔗 <b>Юзернейм:</b> @{username if username != 'Нет юзернейма' else 'Нет'}\n"
-        f"🆔 <b>ID:</b> <code>{user_id}</code>\n"
-        f"{emoji(EMOJI['almaz'], '💰')} <b>Баланс:</b> <code>{balance} ₽</code>"
+        f"{emoji(EMOJI['verified'], '🆔')} ID: <code>{callback.from_user.id}</code>\n"
+        f"{emoji(EMOJI['almaz'], '💰')} Баланс: <code>{balance} ₽</code>"
     )
-    
-    # Если есть фото - отправляем с фото
-    if photos.total_count > 0:
-        photo = photos.photos[0][-1]  # Самое большое фото
-        await callback.message.delete()
-        await callback.message.answer_photo(
-            photo=photo.file_id,
-            caption=text,
-            parse_mode="HTML",
-            reply_markup=get_profile_keyboard()
-        )
-    else:
-        # Если фото нет - просто редактируем сообщение
-        await callback.message.edit_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=get_profile_keyboard()
-        )
-    
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=get_profile_keyboard())
     await callback.answer()
 
 @dp.callback_query(lambda c: c.data == "profile_referral")
@@ -991,13 +830,11 @@ async def process_deposit_amount(message: Message, state: FSMContext):
         await state.update_data(amount=amount)
         await state.set_state(DepositStates.waiting_method)
         
-        # Комиссия ПОКАЗЫВАЕТСЯ, но применяется ТОЛЬКО для крипты
         crypto_fee = await get_crypto_fee()
         fee_text = ""
         if crypto_fee > 0:
             amount_to_pay = int(amount * 100 / (100 - crypto_fee))
             fee_text = f"\n\n{emoji(EMOJI['important'], 'ℹ️')} <b>Комиссия:</b> {crypto_fee}%\nК оплате: <code>{amount_to_pay} ₽</code>\nНа баланс поступит: <code>{amount} ₽</code>"
-            fee_text += f"\n\n<i>⚠️ Комиссия применяется только при оплате криптовалютой</i>"
         
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [
@@ -1022,7 +859,7 @@ async def process_deposit_amount(message: Message, state: FSMContext):
             f"{emoji(EMOJI['key'], '❌')} Введите число!\n\nПример: <code>500</code>",
             parse_mode="HTML"
         )
-        
+
 @dp.callback_query(DepositStates.waiting_method, lambda c: c.data in ["pay_method_platega", "pay_method_crypto"])
 async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
@@ -1082,7 +919,7 @@ async def process_deposit_method(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(
             f"{emoji(EMOJI['cat_surprised'], '😲')} <b>Платежная система временно недоступна</b>\n\n"
             f"Свяжитесь с администратором для ручного пополнения баланса.\n\n"
-            f"{emoji(EMOJI['person'], '👤')} Админ: @ZOJlOTOY или SBveg",
+            f"{emoji(EMOJI['person'], '👤')} Админ: @nikita1055",
             parse_mode="HTML",
             reply_markup=get_profile_keyboard()
         )
@@ -1262,26 +1099,6 @@ async def handle_buy(callback: CallbackQuery):
     await callback.answer(f"{emoji(EMOJI['cat_dance'], '💃')} Покупка успешна!")
 
 # -------- ИИ-ПОМОЩНИК (НОВОЕ) --------
-@dp.message(AIStates.chatting, lambda m: m.text and not m.text.startswith('/'))
-async def ai_chat(message: Message, state: FSMContext):
-    ai_enabled = await get_ai_setting("ai_enabled")
-    if ai_enabled != "true":
-        await message.answer(
-            f"{emoji(EMOJI['key'], '❌')} ИИ-помощник временно отключен администратором.",
-            parse_mode="HTML"
-        )
-        await state.clear()
-        return
-    
-    await bot.send_chat_action(message.chat.id, "typing")
-    response = await get_ai_response(message.from_user.id, message.text)
-    
-    await message.reply(
-        f"{emoji(EMOJI['ai'], '🤖')} {response}",
-        parse_mode="HTML",
-        reply_markup=get_ai_keyboard()
-    )
-
 @dp.callback_query(lambda c: c.data == "menu_ai")
 async def menu_ai(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AIStates.chatting)
@@ -1305,6 +1122,26 @@ async def ai_clear(callback: CallbackQuery):
         reply_markup=get_ai_keyboard()
     )
     await callback.answer()
+
+@dp.message(AIStates.chatting)
+async def ai_chat(message: Message, state: FSMContext):
+    ai_enabled = await get_ai_setting("ai_enabled")
+    if ai_enabled != "true":
+        await message.answer(
+            f"{emoji(EMOJI['key'], '❌')} ИИ-помощник временно отключен администратором.",
+            parse_mode="HTML"
+        )
+        await state.clear()
+        return
+    
+    await bot.send_chat_action(message.chat.id, "typing")
+    response = await get_ai_response(message.from_user.id, message.text)
+    
+    await message.reply(
+        f"{emoji(EMOJI['ai'], '🤖')} {response}",
+        parse_mode="HTML",
+        reply_markup=get_ai_keyboard()
+    )
 
 # -------- АДМИН-ПАНЕЛЬ --------
 @dp.message(Command("admin"))
@@ -1441,33 +1278,9 @@ async def admin_add_product(callback: CallbackQuery, state: FSMContext):
 async def product_name(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
-    
-    raw_name = message.text
-    
-    # Сохраняем оригинальный текст для отображения в меню
-    display_name = convert_emoji_ids(raw_name, for_button=False)
-    
-    # Извлекаем ID для кнопки (если есть)
-    button_emoji_id = extract_emoji_id(raw_name)
-    
-    # Очищаем название от [ID] для отображения в кнопке
-    import re
-    clean_name = re.sub(r'\[(\d+)(?:\|[^\]]+)?\]', '', raw_name).strip()
-    if not clean_name:
-        clean_name = raw_name
-    
-    # Сохраняем и то и другое
-    await state.update_data(
-        name=display_name,
-        clean_name=clean_name,
-        button_emoji_id=button_emoji_id
-    )
-    
+    await state.update_data(name=message.text)
     await state.set_state(AddProductStates.waiting_price)
-    await message.answer(
-        f"{emoji(EMOJI['dollar'], '💰')} Введите цену (число):",
-        parse_mode="HTML"
-    )
+    await message.answer(f"{emoji(EMOJI['dollar'], '💰')} Введите цену (число):", parse_mode="HTML")
 
 @dp.message(AddProductStates.waiting_price)
 async def product_price(message: Message, state: FSMContext):
@@ -1531,13 +1344,7 @@ async def product_keys(message: Message, state: FSMContext):
         await message.answer(f"{emoji(EMOJI['key'], '❌')} Хотя бы один ключ", parse_mode="HTML")
         return
     
-    # Добавляем товар с названием (уже с эмодзи)
     product_id = await add_product(data["name"], data["price"], data.get("photo_id"))
-    
-    # Сохраняем clean_name и button_emoji_id для кнопки
-    # Можно сохранить в отдельную таблицу или в поле name
-    # Пока используем name с тегами
-    
     await add_keys_to_product(product_id, keys)
     
     shop_mode = await get_setting("shop_mode")
@@ -1808,13 +1615,12 @@ async def process_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     
-    # Заменяем [ID] на премиум эмодзи
-    broadcast_text = convert_emoji_ids(message.text)
+    broadcast_text = message.text
     users = await get_all_users()
     
     await message.answer(
-        f"📢 <b>Начинаю рассылку...</b>\n\n"
-        f"👥 Всего пользователей: <code>{len(users)}</code>",
+        f"{emoji(EMOJI['notification'], '📢')} <b>Начинаю рассылку...</b>\n\n"
+        f"{emoji(EMOJI['person'], '👥')} Всего пользователей: <code>{len(users)}</code>",
         parse_mode="HTML"
     )
     
@@ -1825,7 +1631,7 @@ async def process_broadcast(message: Message, state: FSMContext):
         try:
             await bot.send_message(
                 user["user_id"],
-                f"📢 <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
+                f"{emoji(EMOJI['notification'], '📢')} <b>РАССЫЛКА ОТ АДМИНИСТРАТОРА</b>\n\n{broadcast_text}",
                 parse_mode="HTML"
             )
             success_count += 1
@@ -1835,14 +1641,14 @@ async def process_broadcast(message: Message, state: FSMContext):
     
     shop_mode = await get_setting("shop_mode")
     await message.answer(
-        f"✅ <b>Рассылка завершена!</b>\n\n"
-        f"✅ Доставлено: <code>{success_count}</code>\n"
-        f"❌ Не доставлено: <code>{fail_count}</code>",
+        f"{emoji(EMOJI['check'], '✅')} <b>Рассылка завершена!</b>\n\n"
+        f"{emoji(EMOJI['check'], '✅')} Доставлено: <code>{success_count}</code>\n"
+        f"{emoji(EMOJI['key'], '❌')} Не доставлено: <code>{fail_count}</code>",
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
     await state.clear()
-    
+
 # -------- АДМИН: ПРОМОКОДЫ --------
 @dp.callback_query(lambda c: c.data == "admin_create_promocode")
 async def admin_create_promocode(callback: CallbackQuery, state: FSMContext):
@@ -2083,21 +1889,15 @@ async def admin_stats(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
         await callback.answer(f"{emoji(EMOJI['key'], '⛔')}")
         return
-    
     stats = await get_stats()
     shop_mode = await get_setting("shop_mode")
-    
-    text = (
+    await callback.message.edit_text(
         f"{emoji(EMOJI['crown'], '📊')} <b>Статистика</b>\n\n"
         f"{emoji(EMOJI['person'], '👥')} Пользователей: <code>{stats['users']}</code>\n"
         f"{emoji(EMOJI['dollar'], '💰')} Продаж на сумму: <code>{stats['total_sales']} ₽</code>\n"
         f"{emoji(EMOJI['key'], '🔑')} Выдано ключей: <code>{stats['keys_sold']}</code>\n"
         f"{emoji(EMOJI['key'], '🔑')} Осталось ключей: <code>{stats['keys_left']}</code>\n"
-        f"{emoji(EMOJI['store'], '📦')} Товаров в продаже: <code>{stats['products_count']}</code>"
-    )
-    
-    await callback.message.edit_text(
-        text,
+        f"{emoji(EMOJI['store'], '📦')} Товаров в продаже: <code>{stats['products_count']}</code>",
         parse_mode="HTML",
         reply_markup=get_admin_keyboard(shop_mode)
     )
@@ -2202,7 +2002,7 @@ async def admin_ai_stats(callback: CallbackQuery):
         f"👥 <b>Уникальных пользователей:</b> {unique_users}\n"
         f"📈 <b>За 24 часа:</b> {last_24h}\n\n"
         f"<i>Статистика обновляется автоматически</i>",
-        parse_mode="HTML",  # ← ПОСЛЕ ЭТОЙ СТРОКИ ДОЛЖНА БЫТЬ ЗАПЯТАЯ!
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_ai_settings", icon_custom_emoji_id=EMOJI["arrow_back"])]
         ])
