@@ -170,14 +170,14 @@ async def _create_tables():
     await _execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('shop_mode', 'auto')")
     await _execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('custom_text', 'Переведите на карту / по СБП. После оплаты отправьте скриншот.')")
     await _execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('crypto_fee', '0')")
-    await _execute("""
-    INSERT OR IGNORE INTO ai_settings (key, value) VALUES
-    ('system_prompt',
-     'Ты — ИИ-ассистент магазина SWEG SHOP. Ты помогаешь пользователям с выбором товаров, '
-     'отвечаешь на вопросы об оплате, доставке ключей, реферальной программе и промокодах. '
-     'Стиль общения: уверенный, дружелюбный, по-человечески. Можешь использовать эмодзи. '
-     'Если не знаешь точный ответ — не выдумывай, скажи обратиться к поддержке: @ZOJlOTOY или @SBveg.')
-    """)
+    await _execute(
+        "INSERT OR IGNORE INTO ai_settings (key, value) VALUES (?, ?)",
+        "system_prompt",
+        "Ты — ИИ-ассистент магазина SWEG SHOP. Ты помогаешь пользователям с выбором товаров, "
+        "отвечаешь на вопросы об оплате, доставке ключей, реферальной программе и промокодах. "
+        "Стиль общения: уверенный, дружелюбный, по-человечески. Можешь использовать эмодзи. "
+        "Если не знаешь точный ответ — не выдумывай, скажи обратиться к поддержке: @ZOJlOTOY или @SBveg."
+    )
     await _execute("INSERT OR IGNORE INTO ai_settings (key, value) VALUES ('ai_enabled', 'true')")
     await _execute("INSERT OR IGNORE INTO ai_settings (key, value) VALUES ('ai_model', 'mistralai/mistral-7b-instruct:free')")
     await _execute("INSERT OR IGNORE INTO categories (name, emoji) VALUES ('Без категории', '🔹')")
