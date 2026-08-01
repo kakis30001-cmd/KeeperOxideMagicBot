@@ -49,13 +49,25 @@ def run_flask():
 # ===================== Telegram Webhook =====================
 def setup_telegram_webhook(flask_app: Flask, dp: Dispatcher, bot: Bot):
     @flask_app.route("/webhook/telegram", methods=["POST"])
-    async def telegram_webhook():
+    def telegram_webhook():
         data = request.get_json()
         if not data:
             return "Bad Request", 400
-        update = Update.model_validate(data, context={"bot": bot})
-        await dp.feed_webhook_update(bot, update)
-        return "OK", 200
+
+        loop = main_loop
+        if not loop:
+            return "Service Unavailable", 503
+
+        try:
+            update = Update.model_validate(data, context={"bot": bot})
+            future = asyncio.run_coroutine_threadsafe(
+                dp.feed_webhook_update(bot, update), loop
+            )
+            future.result(timeout=30)
+            return "OK", 200
+        except Exception as e:
+            logger.exception("Ошибка обработки Telegram webhook")
+            return "Internal Server Error", 500
 
 
 # ===================== Жизненный цикл =====================
